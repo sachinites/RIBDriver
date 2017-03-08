@@ -4,7 +4,10 @@
 #include <linux/fcntl.h>
 #include <stdlib.h>
 #include <sys/ioctl.h>
-#include "kern_usr.h"
+#include "../kern_usr.h"
+#include "threadApi.h"
+#include <sys/types.h>
+#include <sys/stat.h>
 
 int fd = 0;
 
@@ -98,10 +101,8 @@ void
 ioctl_get_rt_info(){
 	struct rt_info_t rt_info;
 	memset(&rt_info, 0, sizeof(struct rt_info_t));
-	unsigned int bytes = 0;
 
-	printf("user address = 0x%x\n", (unsigned int)&rt_info);
-	bytes = ioctl(fd, RT_IOC_GET_RT_INFO, &rt_info);
+	ioctl(fd, RT_IOC_GET_RT_INFO, &rt_info);
 	
 	printf("rt info : \n");
 	printf("	node count = %u\n", rt_info.node_count);
@@ -172,6 +173,29 @@ ioctl_purge_device(){
 	printf("%s(): Failure\n", __FUNCTION__);
 }
 
+static void*
+subscrption_fn(void * arg){
+	char *buf = calloc(MAX_ENTRIES_FETCH, sizeof(struct rt_update_to_user_t));
+	int n = 0; // no of routing updates
+	while(1){
+		printf("%s() blocked for update from kernel\n", __FUNCTION__);
+		n = ioctl(fd, RT_IOC_SUBSCRIBE_RT, buf);
+		printf("No. of updates recieved = %d\n", n);
+		// print updates here
+		memset(buf, 0, MAX_ENTRIES_FETCH*sizeof(struct rt_entry));
+	}
+	return NULL;
+}
+
+
+
+void ioctl_subscribe_rt(){
+	_pthread_t subscriber_thread;
+	int DETACHED =0;
+	pthread_init(&subscriber_thread, 0 , DETACHED);
+	pthread_create(&(subscriber_thread.pthread_handle), 
+		&subscriber_thread.attr, subscrption_fn, NULL);
+}
 
 void 
 main_menu(){
@@ -184,7 +208,7 @@ main_menu(){
 		printf("Main Menu\n");
 		printf("1. open RT\n");
 		printf("2. purge RT\n");
-		printf("3. Block read\n");
+		printf("3. Subscribe RT\n");
 		printf("4. read All from RT\n");
 		printf("5. close RT\n");
 		printf("6. fork a new process\n");
@@ -202,7 +226,7 @@ main_menu(){
 				ioctl_purge_device();
 				break;
 			case 3:
-				//ioctl_add_route();
+				ioctl_subscribe_rt();
 				break;
 			case 4:
 				rt_read_all();

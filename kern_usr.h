@@ -33,6 +33,8 @@
 #define RT_IOC_SET_ACCESS_MODE	_IOW(RT_IOC_MAGIC, 9, int)
 /* Get RT info*/
 #define RT_IOC_GET_RT_INFO	_IOR(RT_IOC_MAGIC, 10, int)
+/*Subscribe RT*/
+#define RT_IOC_SUBSCRIBE_RT	_IOR(RT_IOC_MAGIC, 11, int)
 
 /*Shared structures between user space and kernel space*/
 struct rt_entry {
@@ -52,7 +54,7 @@ struct rt_entry {
 
 struct rt_update_to_user_t{
 	unsigned int op_code;
-	struct rt_entry;
+	struct rt_entry entry;
 };
 
 struct rt_info_t{
