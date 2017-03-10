@@ -35,6 +35,8 @@
 #define RT_IOC_GET_RT_INFO	_IOR(RT_IOC_MAGIC, 10, int)
 /*Subscribe RT*/
 #define RT_IOC_SUBSCRIBE_RT	_IOR(RT_IOC_MAGIC, 11, int)
+/* Common CUD operations on rt*/
+#define RT_IOC_COMMON_UPDATE_RT	_IOW(RT_IOC_MAGIC, 12, unsigned long)
 
 /*Shared structures between user space and kernel space*/
 struct rt_entry {
@@ -52,7 +54,8 @@ struct rt_entry {
 #define RT_ROUTE_DEL	2
 #define RT_DELETE	3
 
-struct rt_update_to_user_t{
+/* structure to send update from userspace to kernel and vice versa*/
+struct rt_update_t{
 	unsigned int op_code;
 	struct rt_entry entry;
 };
@@ -60,6 +63,7 @@ struct rt_update_to_user_t{
 struct rt_info_t{
 	unsigned int node_count;
 	unsigned int actual_node_count;
+	unsigned int no_of_pending_updates;
 };
 
 #endif

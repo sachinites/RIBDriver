@@ -1,8 +1,19 @@
 #include "rt_table.h"
-#include "common.h"
+#include "kernutils.h"
 #include <linux/slab.h>
 #include <linux/uaccess.h>  // for access_ok
 #include "kern_usr.h"
+
+extern int rt_worker_fn(void *arg);
+
+/*rt structure to keep track of updated entries writers
+to be eventually read by readers */
+
+struct rt_preserve_updates_t{
+	unsigned int op_code;
+	struct rt_entry *entry;
+};
+
 
 struct rt_table * init_rt_table(void){
 	struct rt_table * rt = kmalloc(sizeof(struct rt_table), GFP_KERNEL);
@@ -11,7 +22,13 @@ struct rt_table * init_rt_table(void){
 	init_rwsem(&rt->rw_sem);
 	init_completion(&rt->completion);
 	spin_lock_init(&rt->spin_lock);
+	init_waitqueue_head(&rt->readerQ);
+	init_waitqueue_head(&rt->writerQ);
+	rt->reader_Q = initQ();
+	rt->writer_Q = initQ(); 
 	rt->rt = init_singly_ll();
+	rt->rt_change_list = init_singly_ll();
+	rt->worker_thread = new_kern_thread(&rt_worker_fn, NULL, "rt_worker_thread");
 	return rt;
 }
 
@@ -20,7 +37,15 @@ add_rt_table_entry_by_val(struct rt_table *rt,
                		 struct rt_entry _rt_entry){
 
 	int rc = SUCCESS;
+	struct rt_preserve_updates_t msg;
+	memset(&msg, 0, sizeof(struct rt_preserve_updates_t));
+	
+	printk("%s() is called\n", __FUNCTION__);
 	rc = (int)singly_ll_add_node_by_val(rt->rt, &_rt_entry, sizeof(struct rt_entry));
+	msg.op_code = RT_ROUTE_ADD;
+	msg.entry = (struct rt_entry *)GET_RT_ENTRY_PTR(GET_HEAD_SINGLY_LL(rt->rt));
+	singly_ll_add_node_by_val(rt->rt_change_list, &msg, sizeof(struct rt_preserve_updates_t)); 
+		
 	return rc;
 }
 
@@ -148,3 +173,82 @@ cleanup_rt_table(struct rt_table **_rt){
 	rt = NULL;
 //	up(&rt->sem);
 }
+
+int 
+mutex_is_rt_updated(unsigned int intial_node_cnt, struct rt_table *rt){
+	
+	if(down_interruptible(&rt->sem))
+		return -ERESTARTSYS;
+
+	if(intial_node_cnt == GET_RT_ENTRY_COUNT(rt)){
+		up(&rt->sem);
+		printk(KERN_INFO "Readers detect RT table not yet updated\n");
+		return 0;
+	}
+
+	printk(KERN_INFO "Readers detect RT table has been updated !!\n");
+	up(&rt->sem);
+	return 1;
+}
+
+int
+apply_rt_updates(struct rt_table *rt, struct rt_update_t *update_msg){
+
+	int rc = 0;
+	printk("%s() is called\n", __FUNCTION__);
+	switch(update_msg->op_code){
+		case RT_ROUTE_UPDATE:
+			break;
+		case RT_ROUTE_ADD:
+			add_rt_table_entry_by_val(rt, update_msg->entry);
+			break;
+		case RT_ROUTE_DEL:
+			break;
+		case RT_DELETE:
+			break;
+		default:
+			printk(KERN_INFO "%s() Unknown Operation on rt\n", __FUNCTION__);
+	}
+	return rc;
+}
+
+int
+rt_empty_change_list(struct rt_table *rt){
+
+	printk("%s() is called\n", __FUNCTION__);
+	delete_singly_ll(rt->rt_change_list);
+	return 0;
+}
+
+int
+rt_get_updated_rt_entries(struct rt_table *rt, struct rt_update_t **_rt_update_vector){
+
+	unsigned int count = 0, i = 0;
+	struct singly_ll_node_t* head = NULL;
+	struct rt_preserve_updates_t *data = NULL;
+	struct rt_update_t *rt_update_vector = NULL;
+
+	rt_update_vector = *_rt_update_vector;
+
+	count = GET_RT_CHANGELIST_ENTRY_COUNT(rt);
+
+	rt_update_vector = kzalloc(count * sizeof(struct rt_update_t), GFP_KERNEL);
+	 *_rt_update_vector = rt_update_vector;
+
+	if(!rt_update_vector){
+		printk(KERN_INFO "%s() memory allocation failed\n", __FUNCTION__);
+		return 0;
+	}
+
+	head = GET_HEAD_SINGLY_LL(rt->rt_change_list);
+	for(;i < count; i++){
+		data = GET_RT_ENTRY_PTR(head);
+		rt_update_vector->op_code = data->op_code;
+		memcpy(&rt_update_vector->entry, data->entry, sizeof(struct rt_entry));
+		rt_update_vector++;
+		head = GET_NEXT_NODE_SINGLY_LL(head);
+	}
+	
+	return count;
+}
+

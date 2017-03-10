@@ -50,7 +50,7 @@ rt_open(){
 
 	printf("%s() : Success\n", __FUNCTION__);
 
-
+#if 0
 	struct rt_entry entry[4];	
 	memset(entry, 0, sizeof(entry));
 
@@ -75,6 +75,7 @@ rt_open(){
 
 	for(; i < 4 ; i++)
 		ioctl(fd, RT_IOC_CR_RTENTRY, &entry[i]);
+#endif
 }
 
 static void
@@ -107,6 +108,7 @@ ioctl_get_rt_info(){
 	printf("rt info : \n");
 	printf("	node count = %u\n", rt_info.node_count);
 	printf("        Actual node count = %u\n", rt_info.actual_node_count);
+	printf("        # of pending updates = %u\n", rt_info.no_of_pending_updates);
 	printf("---------------------------------\n");
 }
 
@@ -115,43 +117,44 @@ rt_write(){}
 
 static void
 ioctl_add_route(){
-	struct rt_entry entry;
+	struct rt_update_t update_msg;
 	int ret = 0;
 	char consume_new_line[2];
-	memset(&entry, 0, sizeof(struct rt_entry));
+	memset(&update_msg, 0, sizeof(struct rt_update_t));
 	
 	/*consume last \n */
 	
 	fgets((char *)consume_new_line, 2, stdin);
 		
 	printf("Enter dest ip ? ");	
-	if((fgets((char *)entry.dst_ip, 15, stdin) == NULL)){
+	if((fgets((char *)update_msg.entry.dst_ip, 15, stdin) == NULL)){
 		printf("error in reading from stdin\n");
 		exit(EXIT_SUCCESS);
 	}
 
-	entry.dst_ip[strlen(entry.dst_ip) - 1] = '\0';
+	update_msg.entry.dst_ip[strlen(update_msg.entry.dst_ip) - 1] = '\0';
 	printf("\nEnter nxt hop ip ? ");
 	
 	
-	if((fgets((char *)entry.nxt_hop_ip, 15, stdin) == NULL)){
+	if((fgets((char *)update_msg.entry.nxt_hop_ip, 15, stdin) == NULL)){
 		printf("error in reading from stdin\n");
 		exit(EXIT_SUCCESS);
 	}
 
 	
-	entry.nxt_hop_ip[strlen(entry.nxt_hop_ip) - 1] = '\0';
+	update_msg.entry.nxt_hop_ip[strlen(update_msg.entry.nxt_hop_ip) - 1] = '\0';
 
 	printf("\nEnter oif ? ");
 	
-	if((fgets((char *)entry.oif, 15, stdin) == NULL)){
+	if((fgets((char *)update_msg.entry.oif, 15, stdin) == NULL)){
 		printf("error in reading from stdin\n");
 		exit(EXIT_SUCCESS);
 	}
 
-	entry.oif[strlen(entry.oif) - 1] = '\0';
+	update_msg.entry.oif[strlen(update_msg.entry.oif) - 1] = '\0';
+	update_msg.op_code = RT_ROUTE_ADD;	
 	
-	ret = ioctl(fd, RT_IOC_CR_RTENTRY, &entry);
+	ret = ioctl(fd, RT_IOC_COMMON_UPDATE_RT, &update_msg);
 
 	if(ret == 0){
 		printf("%s(): Success\n", __FUNCTION__);
@@ -175,14 +178,21 @@ ioctl_purge_device(){
 
 static void*
 subscrption_fn(void * arg){
-	char *buf = calloc(MAX_ENTRIES_FETCH, sizeof(struct rt_update_to_user_t));
-	int n = 0; // no of routing updates
+	char *buf = calloc(MAX_ENTRIES_FETCH, sizeof(struct rt_update_t));
+	int n = 0, i = 0; // no of routing updates
+	struct rt_update_t *update_msg = NULL;
+
 	while(1){
 		printf("%s() blocked for update from kernel\n", __FUNCTION__);
 		n = ioctl(fd, RT_IOC_SUBSCRIBE_RT, buf);
 		printf("No. of updates recieved = %d\n", n);
 		// print updates here
-		memset(buf, 0, MAX_ENTRIES_FETCH*sizeof(struct rt_entry));
+		for(i = 0; i < n; i++){
+			update_msg = buf;
+			printf("%d. op_code = %d\n", i+1, update_msg->op_code);
+			print_rt_one_entry(i+1, &update_msg->entry);			
+		}
+		memset(buf, 0, MAX_ENTRIES_FETCH*sizeof(struct rt_update_t));
 	}
 	return NULL;
 }
@@ -202,7 +212,6 @@ main_menu(){
 	int choice;
 
 	/* Add static entries to routing table*/
-
 
 	while(1){
 		printf("Main Menu\n");

@@ -10,4 +10,10 @@ do {    if (x) break;                                                   \
 #define SUCCESS 0
 #define FAILURE -1
 
+#define SET_FILE_ACCESS_FLAG(filp, flag)        (filep->f_flags = filep->f_flags | flag)
+#define UNSET_FILE_ACCESS_FLAG(filp, flag)      (filep->f_flags = filep->f_flags & (flag ^ 0xFFFFFFFF))
+
+#define IS_FILE_ACCESS_FLAG_SET(filp, flag)	(filep->f_flags & flag)
+#define IS_FILE_ACCESS_FLAG_NOT SET(filp, flag)	(!(filep->f_flags & flag))
+
 #endif

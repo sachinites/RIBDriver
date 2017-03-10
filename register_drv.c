@@ -6,8 +6,9 @@
 #include <linux/cdev.h>
 
 #include "dev_majors.h"
-#include "common.h"
+#include "kernutils.h"
 #include "rt_table.h"
+
 //#include "rt_fops.h"
 
 MODULE_AUTHOR("Abhishek Sagar");
@@ -24,12 +25,17 @@ struct rt_table *rt = NULL;
 /* Import device file operations*/
 
 extern struct file_operations rt_fops;
+//extern spinlock_t cross_bndry_spin_lock;
+extern struct semaphore serialize_readers_cs_sem;
 
 int
 char_driver_init_module(void){
 	int rc = SUCCESS;
 
 	printk(KERN_INFO "%s() is called\n", __FUNCTION__);
+	/* initialize global constructs*/
+//	spin_lock_init(&cross_bndry_spin_lock);
+	sema_init(&serialize_readers_cs_sem, 1);
 
 	/* 1. rt_table device registration*/	
 	{
@@ -90,9 +96,13 @@ char_driver_init_module(void){
 void
 char_driver_cleanup_module(void){
 	printk(KERN_INFO "%s() is called\n", __FUNCTION__);
-	return;
+	unregister_chrdev_region(dev, RT_MINOR_UNITS);  
+	cdev_del(&rt->cdev);
+	cleanup_rt_table(&rt);
+	printk(KERN_INFO "Good by LKM!!\n"); 
 }
 
 
 module_init(char_driver_init_module);
 module_exit(char_driver_cleanup_module);
+

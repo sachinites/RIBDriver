@@ -7,16 +7,27 @@
 #include <linux/spinlock.h>
 #include <linux/cdev.h>
 #include "LinkedListApi.h"
+#include <linux/wait.h>  // for waitQueues
+#include <linux/sched.h>
+#include  "kernthread.h"
+#include "Queue.h"
 
 /*Shared structure defined in kern_usr.h*/
 struct rt_entry ;
+struct rt_update_t;
 
 struct rt_table{
 	struct ll_t *rt;
 	struct semaphore sem;
 	struct rw_semaphore rw_sem;
 	struct completion completion;
-	spinlock_t spin_lock;	
+	spinlock_t spin_lock;
+	wait_queue_head_t readerQ; // Queue of processes waiting to read the RT update
+	wait_queue_head_t writerQ; // Queue of processes waiting to write to RT	
+	struct kernthread *worker_thread; // every resouce has a worker thread whose job is to share the resource between readers writers
+	struct Queue_t *reader_Q;
+	struct Queue_t *writer_Q;	
+	struct ll_t *rt_change_list;	
 	struct cdev cdev;
 };
 
@@ -25,6 +36,14 @@ struct rt_table{
 #define GET_RT_ENTRY_PTR(node)		(((struct singly_ll_node_t *)node)->data)
 #define GET_RT_ENTRY_COUNT(rt)		(GET_NODE_COUNT_SINGLY_LL(rt->rt))
 #define GET_FIRST_RT_ENTRY_NODE(rt)	((void *)GET_HEAD_SINGLY_LL(rt->rt))
+#define GET_RT_CHANGELIST_ENTRY_COUNT(rt)	(GET_NODE_COUNT_SINGLY_LL(rt->rt_change_list))
+
+#define  SEM_LOCK_WRITER_Q(rt)		{if(down_interruptible(&rt->writer_Q->sem)) return -ERESTARTSYS;}
+#define  SEM_UNLOCK_WRITER_Q(rt)	(up(&rt->writer_Q->sem))
+
+#define  SEM_LOCK_READER_Q(rt)		{if(down_interruptible(&rt->reader_Q->sem)) return -ERESTARTSYS;}
+#define  SEM_UNLOCK_READER_Q(rt)	(up(&rt->reader_Q->sem))
+
 
 struct rt_table * init_rt_table(void);
 
@@ -49,5 +68,19 @@ copy_rt_table_to_user_space(struct rt_table *rt, char __user *buf, unsigned int 
 void purge_rt_table(struct rt_table *rt);
 
 void cleanup_rt_table(struct rt_table **rt);
+
+int
+mutex_is_rt_updated(unsigned int intial_node_cnt, struct rt_table *rt);
+
+void rt_set_worker_thread_fn(struct rt_table *rt, void *fn, void *fn_arg);
+
+int
+apply_rt_updates(struct rt_table *rt, struct rt_update_t *update_msg);
+
+int
+rt_empty_change_list(struct rt_table *rt);
+
+int
+rt_get_updated_rt_entries(struct rt_table *rt, struct rt_update_t **rt_update_vector);
 
 #endif

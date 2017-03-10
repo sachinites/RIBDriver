@@ -1,7 +1,7 @@
 #include "LinkedListApi.h"
-#include "common.h"		/* assert macro*/
 #include <linux/slab.h>         /* kmalloc() */
 #include <linux/kernel.h>       /* printk() */
+#include "kernutils.h"
 
 struct ll_t* init_singly_ll(void){
     struct ll_t* list = kmalloc(sizeof(struct ll_t), GFP_KERNEL);
@@ -106,6 +106,7 @@ singly_ll_add_node(struct ll_t* ll, struct singly_ll_node_t *node){
 
 enum rc_t 
 singly_ll_add_node_by_val(struct ll_t *ll, void *data, unsigned int data_size){
+
     struct singly_ll_node_t* node = singly_ll_init_node();
     node->data = kmalloc(data_size, GFP_KERNEL);
     node->data_size = data_size;
