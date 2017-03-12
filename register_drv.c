@@ -6,8 +6,8 @@
 #include <linux/cdev.h>
 
 #include "dev_majors.h"
-#include "kernutils.h"
-#include "rt_table.h"
+#include "common/kernutils.h"
+#include "RT/rt_table.h"
 
 //#include "rt_fops.h"
 

@@ -4,7 +4,7 @@
 #include <linux/fcntl.h>
 #include <stdlib.h>
 #include <sys/ioctl.h>
-#include "../kern_usr.h"
+#include "../RT/kernusr.h"
 #include "threadApi.h"
 #include <sys/types.h>
 #include <sys/stat.h>

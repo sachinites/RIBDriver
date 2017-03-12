@@ -6,11 +6,11 @@
 #include <linux/completion.h>
 #include <linux/spinlock.h>
 #include <linux/cdev.h>
-#include "LinkedListApi.h"
+#include "../common/LinkedListApi.h"
 #include <linux/wait.h>  // for waitQueues
 #include <linux/sched.h>
-#include  "kernthread.h"
-#include "Queue.h"
+#include  "../common/kernthread.h"
+#include "../common/Queue.h"
 
 /*Shared structure defined in kern_usr.h*/
 struct rt_entry ;

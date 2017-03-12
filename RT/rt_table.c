@@ -1,8 +1,8 @@
 #include "rt_table.h"
-#include "kernutils.h"
+#include "../common/kernutils.h"
 #include <linux/slab.h>
 #include <linux/uaccess.h>  // for access_ok
-#include "kern_usr.h"
+#include "kernusr.h"
 
 extern int rt_worker_fn(void *arg);
 

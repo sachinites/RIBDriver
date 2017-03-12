@@ -1,8 +1,9 @@
 #include "rt_fops.h"
-#include "kern_usr.h"
+#include "kernusr.h"
 #include "rt_table.h"
 #include <asm/uaccess.h> // for datums
 #include <linux/slab.h>
+#include "../common/kernutils.h"
 
 extern struct rt_table *rt;
 
@@ -20,33 +21,11 @@ struct file_operations rt_fops = {
 
 /* internal functions*/
 
-#define SET_ACCESS_FLAG(filp, flag)	(filep->f_flags = filep->f_flags | flag)
-#define UNSET_ACCESS_FLAG(filp, flag)   (filep->f_flags = filep->f_flags & (flag ^ 0xFFFFFFFF))
-
 /* Global variables*/
 static unsigned int n_readers_to_be_service = 0; 
 struct semaphore serialize_readers_cs_sem;
 static struct rt_update_t *rt_update_vector = NULL;
 static int rt_update_vector_count = 0;
-
-
-static 
-void print_file_flags(struct file *filp){
-
-	printk(KERN_INFO "filp->f_flags:\n");
-	if(filp->f_flags & O_APPEND)
-		printk(KERN_INFO "O_APPEND set\n");
-	if(filp->f_flags & O_CREAT)
-		printk(KERN_INFO "O_CREAT set\n");
-	if(filp->f_flags & O_RDONLY)
-		printk(KERN_INFO "O_RDONLY set\n");
-	if(filp->f_flags & O_WRONLY)
-		printk(KERN_INFO "O_WRONLY set\n");
-	if(filp->f_flags & O_RDWR)
-		printk(KERN_INFO "O_RDWR set\n");
-	if(filp->f_flags & O_NONBLOCK)
-		printk(KERN_INFO "O_NONBLOCK set\n");
-}
 
 int rt_open (struct inode *inode, struct file *filp){
 

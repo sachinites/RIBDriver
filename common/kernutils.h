@@ -16,4 +16,6 @@ do {    if (x) break;                                                   \
 #define IS_FILE_ACCESS_FLAG_SET(filp, flag)	(filep->f_flags & flag)
 #define IS_FILE_ACCESS_FLAG_NOT SET(filp, flag)	(!(filep->f_flags & flag))
 
+struct file;
+void print_file_flags(struct file *filp);
 #endif

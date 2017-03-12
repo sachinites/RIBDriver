@@ -6,7 +6,7 @@
 #ifndef __KERN_USR__
 #define __KERN_USR__
 
-#include "dev_majors.h"
+#include "../dev_majors.h"
 #include <linux/fcntl.h> // for _IO Macros
 
 #define RT_IOC_MAGIC	RT_MAJOR_NUMBER
