@@ -9,8 +9,6 @@
 #include "common/kernutils.h"
 #include "RT/rt_table.h"
 
-//#include "rt_fops.h"
-
 MODULE_AUTHOR("Abhishek Sagar");
 MODULE_LICENSE("Dual BSD/GPL");
 
@@ -26,16 +24,14 @@ struct rt_table *rt = NULL;
 
 extern struct file_operations rt_fops;
 //extern spinlock_t cross_bndry_spin_lock;
-extern struct semaphore serialize_readers_cs_sem;
+extern struct semaphore rt_serialize_readers_cs_sem;
 
 int
 char_driver_init_module(void){
 	int rc = SUCCESS;
 
 	printk(KERN_INFO "%s() is called\n", __FUNCTION__);
-	/* initialize global constructs*/
-//	spin_lock_init(&cross_bndry_spin_lock);
-	sema_init(&serialize_readers_cs_sem, 1);
+	sema_init(&rt_serialize_readers_cs_sem, 1);
 
 	/* 1. rt_table device registration*/	
 	{
@@ -55,25 +51,6 @@ char_driver_init_module(void){
 		/* add device to kernel finally*/
 		rc = cdev_add (&rt->cdev, dev, RT_MINOR_UNITS);
 		if(rc !=0) goto CDEV_ADD_FAILED;
-	}
-
-	/*2. arp_table device registration*/
-	{
-		dev = MKDEV(ARP_MAJOR_NUMBER, 0);
-		rc = register_chrdev_region(dev, ARP_MINOR_UNITS, "ARP_TABLE");
-		if(rc < 0) goto MAJOR_NUMBER_REG_FAILED;
-
-		dev = MKDEV(ARP_MAJOR_NUMBER, 1);
-
-#if 0 // device do not exist yet
-		cdev_init(&rt->cdev, &rt_fops);
-		rt->cdev.owner = THIS_MODULE;
-		rt->cdev.ops = &rt_fops;
-		/* add device to kernel finally*/
-		rc = cdev_add (&rt->cdev, dev, RT_MINOR_UNITS);
-		if(rc !=0) goto CDEV_ADD_FAILED;
-#endif
-
 	}
 
 	return rc;

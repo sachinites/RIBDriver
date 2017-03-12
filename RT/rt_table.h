@@ -11,6 +11,7 @@
 #include <linux/sched.h>
 #include  "../common/kernthread.h"
 #include "../common/Queue.h"
+#include "../common/kernutils.h"
 
 /*Shared structure defined in kern_usr.h*/
 struct rt_entry ;
@@ -38,11 +39,11 @@ struct rt_table{
 #define GET_FIRST_RT_ENTRY_NODE(rt)	((void *)GET_HEAD_SINGLY_LL(rt->rt))
 #define GET_RT_CHANGELIST_ENTRY_COUNT(rt)	(GET_NODE_COUNT_SINGLY_LL(rt->rt_change_list))
 
-#define  SEM_LOCK_WRITER_Q(rt)		{if(down_interruptible(&rt->writer_Q->sem)) return -ERESTARTSYS;}
-#define  SEM_UNLOCK_WRITER_Q(rt)	(up(&rt->writer_Q->sem))
+#define  RT_SEM_LOCK_WRITER_Q(rt)	(SEM_LOCK(&rt->writer_Q->sem))
+#define  RT_SEM_UNLOCK_WRITER_Q(rt)	(SEM_UNLOCK(&rt->writer_Q->sem))
 
-#define  SEM_LOCK_READER_Q(rt)		{if(down_interruptible(&rt->reader_Q->sem)) return -ERESTARTSYS;}
-#define  SEM_UNLOCK_READER_Q(rt)	(up(&rt->reader_Q->sem))
+#define  RT_SEM_LOCK_READER_Q(rt)	(SEM_LOCK(&rt->reader_Q->sem)) 
+#define  RT_SEM_UNLOCK_READER_Q(rt)	(SEM_UNLOCK(&rt->reader_Q->sem))
 
 
 struct rt_table * init_rt_table(void);

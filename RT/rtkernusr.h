@@ -3,8 +3,8 @@
    codes in this file. 
  */
 
-#ifndef __KERN_USR__
-#define __KERN_USR__
+#ifndef __RT_KERN_USR__
+#define __RT_KERN_USR__
 
 #include "../dev_majors.h"
 #include <linux/fcntl.h> // for _IO Macros
@@ -47,12 +47,6 @@ struct rt_entry {
 
 #define MAX_ENTRIES_FETCH	20
 
-/* Reply to user space appln about RT change */
-
-#define RT_ROUTE_UPDATE	0
-#define RT_ROUTE_ADD	1
-#define RT_ROUTE_DEL	2
-#define RT_DELETE	3
 
 /* structure to send update from userspace to kernel and vice versa*/
 struct rt_update_t{

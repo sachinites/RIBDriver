@@ -1,5 +1,5 @@
 #include "rt_fops.h"
-#include "kernusr.h"
+#include "rtkernusr.h"
 #include "rt_table.h"
 #include <asm/uaccess.h> // for datums
 #include <linux/slab.h>
@@ -23,7 +23,7 @@ struct file_operations rt_fops = {
 
 /* Global variables*/
 static unsigned int n_readers_to_be_service = 0; 
-struct semaphore serialize_readers_cs_sem;
+struct semaphore rt_serialize_readers_cs_sem;
 static struct rt_update_t *rt_update_vector = NULL;
 static int rt_update_vector_count = 0;
 
@@ -82,9 +82,9 @@ allow_rt_access_to_readers(struct rt_table *rt, unsigned int n){
    printk(KERN_INFO "inside %s() ....\n", __FUNCTION__);
 	
    for (; i < n; i++){
-	SEM_LOCK_READER_Q(rt);
+	RT_SEM_LOCK_READER_Q(rt);
 	reader_thread = deque(rt->reader_Q);
-	SEM_UNLOCK_READER_Q(rt);
+	RT_SEM_UNLOCK_READER_Q(rt);
 	printk(KERN_INFO "giving rt access to reader thread : \"%s\" (pid %i)\n", 
 			 reader_thread->task->comm, reader_thread->task->pid);	
 	complete(&reader_thread->completion);
@@ -108,18 +108,18 @@ int rt_worker_fn(void *arg){
 	printk(KERN_INFO "worker thread is revived from sleep, picking up the first writer thread from writerQ\n");
 	
 	printk(KERN_INFO "worker thread is locking the writer Queue= 0x%x\n", (unsigned int)rt->writer_Q);
-	SEM_LOCK_WRITER_Q(rt);
+	RT_SEM_LOCK_WRITER_Q(rt);
 	
 	writer_thread = (struct kernthread *)deque(rt->writer_Q);
 	printk(KERN_INFO "worker thread has extracted the writer \"%s\" (pid %i) from writer Queue = 0x%x\n", 
 			writer_thread->task->comm, writer_thread->task->pid, (unsigned int)rt->writer_Q);
 
-	SEM_UNLOCK_WRITER_Q(rt);
+	RT_SEM_UNLOCK_WRITER_Q(rt);
 	printk(KERN_INFO "worker thread has released locked over writer Queue= 0x%x\n", (unsigned int)rt->writer_Q);
 	
 	if(!writer_thread){
 		printk(KERN_INFO "worker thread finds there is no writer in writer_Q, worker thread is sleeping\n");
-		SEM_UNLOCK_WRITER_Q(rt);
+		RT_SEM_UNLOCK_WRITER_Q(rt);
 		printk(KERN_INFO "worker thread has unlocked the writer Queue= 0x%x\n", (unsigned int)rt->writer_Q);
 		goto WAIT_FOR_WRITER_ARRIVAL;
 	}
@@ -133,9 +133,9 @@ int rt_worker_fn(void *arg){
 	wait_for_completion(&worker_thread->completion);
 	printk(KERN_INFO "worker thread has recieved the wakeup signal from writer thread, woken up \n");
 	printk(KERN_INFO "worker thread is calculating the no of readers in reader_q now\n");
-	SEM_LOCK_READER_Q(rt);
+	RT_SEM_LOCK_READER_Q(rt);
 	n_readers_to_be_service = Q_COUNT(rt->reader_Q);
-	SEM_UNLOCK_READER_Q(rt);	
+	RT_SEM_UNLOCK_READER_Q(rt);	
 	printk(KERN_INFO "worker thread finds the no. of readers to be serviced  = %u\n", n_readers_to_be_service);
 
 	if(n_readers_to_be_service == 0){
@@ -196,11 +196,11 @@ long ioctl_rt_handler1 (struct file *filep, unsigned int cmd, unsigned long arg)
 				printk(KERN_INFO "writer thread \"%s\" (pid %i) is locking the writer Queue = 0x%x, writer Queue count = %u\n", 
 						writer_thread->task->comm, writer_thread->task->pid, (unsigned int)rt->writer_Q, Q_COUNT(rt->writer_Q));
 
-				SEM_LOCK_WRITER_Q(rt);
+				RT_SEM_LOCK_WRITER_Q(rt);
 				enqueue(rt->writer_Q, writer_thread);
 				printk(KERN_INFO "writer thread \"%s\" (pid %i) is enqueued in writer Queue, writer Queue count = %u\n", 
 						writer_thread->task->comm, writer_thread->task->pid, Q_COUNT(rt->writer_Q));
-				SEM_UNLOCK_WRITER_Q(rt);
+				RT_SEM_UNLOCK_WRITER_Q(rt);
 				printk(KERN_INFO "writer thread \"%s\" (pid %i) has released thelock on writer Q\n", 
 						writer_thread->task->comm, writer_thread->task->pid);
 
@@ -226,11 +226,11 @@ long ioctl_rt_handler1 (struct file *filep, unsigned int cmd, unsigned long arg)
 				printk(KERN_INFO "writer thread \"%s\" (pid %i) is locking the writer Queue = 0x%x, writer Queue count = %u\n", 
 						writer_thread->task->comm, writer_thread->task->pid, (unsigned int)rt->writer_Q, Q_COUNT(rt->writer_Q));
 
-				SEM_LOCK_WRITER_Q(rt);
+				RT_SEM_LOCK_WRITER_Q(rt);
 				enqueue(rt->writer_Q, writer_thread);
 				printk(KERN_INFO "writer thread \"%s\" (pid %i) is enqueued in writer Queue, writer Queue count = %u\n", 
 						writer_thread->task->comm, writer_thread->task->pid, Q_COUNT(rt->writer_Q));
-				SEM_UNLOCK_WRITER_Q(rt);
+				RT_SEM_UNLOCK_WRITER_Q(rt);
 				printk(KERN_INFO "writer thread \"%s\" (pid %i) has released thelock on writer Q\n", 
 						writer_thread->task->comm, writer_thread->task->pid);
 
@@ -258,11 +258,11 @@ long ioctl_rt_handler1 (struct file *filep, unsigned int cmd, unsigned long arg)
 				printk(KERN_INFO "writer thread \"%s\" (pid %i) is locking the writer Queue = 0x%x, writer Queue count = %u\n", 
 						writer_thread->task->comm, writer_thread->task->pid, (unsigned int)rt->writer_Q, Q_COUNT(rt->writer_Q));
 
-				SEM_LOCK_WRITER_Q(rt);
+				RT_SEM_LOCK_WRITER_Q(rt);
 				enqueue(rt->writer_Q, writer_thread);
 				printk(KERN_INFO "writer thread \"%s\" (pid %i) is enqueued in writer Queue, writer Queue count = %u\n", 
 						writer_thread->task->comm, writer_thread->task->pid, Q_COUNT(rt->writer_Q));
-				SEM_UNLOCK_WRITER_Q(rt);
+				RT_SEM_UNLOCK_WRITER_Q(rt);
 				printk(KERN_INFO "writer thread \"%s\" (pid %i) has released thelock on writer Q\n", 
 						writer_thread->task->comm, writer_thread->task->pid);
 
@@ -350,11 +350,11 @@ long ioctl_rt_handler1 (struct file *filep, unsigned int cmd, unsigned long arg)
 				printk(KERN_INFO "reader thread \"%s\" (pid %i) is locking the reader Queue = 0x%x, reader Queue count = %u\n",
                                                 reader_thread->task->comm, reader_thread->task->pid, (unsigned int)rt->reader_Q, Q_COUNT(rt->reader_Q));
 
-				SEM_LOCK_READER_Q(rt);
+				RT_SEM_LOCK_READER_Q(rt);
                                 enqueue(rt->reader_Q, reader_thread);
                                 printk(KERN_INFO "reader thread \"%s\" (pid %i) is enqueued in reader Queue, reader Queue count = %u\n",
                                                 reader_thread->task->comm, reader_thread->task->pid, Q_COUNT(rt->reader_Q));
-                                SEM_UNLOCK_READER_Q(rt);
+                                RT_SEM_UNLOCK_READER_Q(rt);
                                 printk(KERN_INFO "reader thread \"%s\" (pid %i) has released the lock on reader Q\n",
                                                 reader_thread->task->comm, reader_thread->task->pid);
 				printk(KERN_INFO "reader thread \"%s\" (pid %i) is blocking itself now to be scheduled by worker thread\n", reader_thread->task->comm, reader_thread->task->pid);
@@ -374,7 +374,7 @@ long ioctl_rt_handler1 (struct file *filep, unsigned int cmd, unsigned long arg)
 				/* Access CS ends*/
 	
 				/* EXIT CS BEGIN*/
-				down_interruptible(&serialize_readers_cs_sem);
+				down_interruptible(&rt_serialize_readers_cs_sem);
 				if(n_readers_to_be_service == 1){
 					printk(KERN_INFO "reader thread \"%s\" (pid %i) is the  last reader, freeing the rt update change list\n", reader_thread->task->comm, reader_thread->task->pid);
 					rt_update_vector_count = 0;
@@ -386,7 +386,7 @@ long ioctl_rt_handler1 (struct file *filep, unsigned int cmd, unsigned long arg)
 				}
 				n_readers_to_be_service--;
 				printk(KERN_INFO "reader thread \"%s\" (pid %i) leaves the CS\n", reader_thread->task->comm, reader_thread->task->pid);
-				up(&serialize_readers_cs_sem);
+				up(&rt_serialize_readers_cs_sem);
 				/* EXIT CS ENDS*/
 				printk(KERN_INFO "reader thread \"%s\" (pid %i) finihed access to the rt and leaves the kernel space\n", reader_thread->task->comm, reader_thread->task->pid); 	
 			}

@@ -18,4 +18,9 @@ do {    if (x) break;                                                   \
 
 struct file;
 void print_file_flags(struct file *filp);
+
+
+#define  SEM_LOCK(sem)	{if(down_interruptible(sem)) return -ERESTARTSYS;} 
+#define  SEM_UNLOCK(sem)(up(sem))
+
 #endif
