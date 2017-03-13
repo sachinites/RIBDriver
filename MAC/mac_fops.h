@@ -9,5 +9,5 @@ ssize_t mac_read (struct file *filp, char __user *buf, size_t count, loff_t *f_p
 ssize_t mac_write(struct file *filp, const char __user *buf, size_t count, loff_t *f_pos);
 long ioctl_mac_handler1 (struct file *filep, unsigned int cmd, unsigned long arg);
 long ioctl_mac_handler2 (struct file *filep, unsigned int cmd, unsigned long arg);
-
+unsigned int mac_poll (struct file *filep, struct poll_table_struct *poll_table);
 #endif

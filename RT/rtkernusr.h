@@ -45,7 +45,7 @@ struct rt_entry {
         char oif[16];
 };
 
-#define MAX_ENTRIES_FETCH	20
+#define RT_MAX_ENTRIES_FETCH	20
 
 
 /* structure to send update from userspace to kernel and vice versa*/

@@ -45,6 +45,8 @@ struct rt_table{
 #define  RT_SEM_LOCK_READER_Q(rt)	(SEM_LOCK(&rt->reader_Q->sem)) 
 #define  RT_SEM_UNLOCK_READER_Q(rt)	(SEM_UNLOCK(&rt->reader_Q->sem))
 
+#define RT_LOCK_SEM(rt)			(SEM_LOCK(&rt->sem))
+#define RT_UNLOCK_SEM(rt)               (SEM_UNLOCK(&rt->sem))
 
 struct rt_table * init_rt_table(void);
 
@@ -71,7 +73,7 @@ void purge_rt_table(struct rt_table *rt);
 void cleanup_rt_table(struct rt_table **rt);
 
 int
-mutex_is_rt_updated(unsigned int intial_node_cnt, struct rt_table *rt);
+mutex_is_rt_updated(struct rt_table *rt);
 
 void rt_set_worker_thread_fn(struct rt_table *rt, void *fn, void *fn_arg);
 

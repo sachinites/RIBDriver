@@ -175,20 +175,22 @@ cleanup_mac_table(struct mac_table **_mac){
 }
 
 int 
-mutex_is_mac_updated(unsigned int intial_node_cnt, struct mac_table *mac){
-	
-	if(down_interruptible(&mac->sem))
-		return -ERESTARTSYS;
+mutex_is_mac_updated(struct mac_table *mac){
+        
+        int n = 0;
+        if(down_interruptible(&mac->sem))
+                return -ERESTARTSYS;
 
-	if(intial_node_cnt == GET_MAC_ENTRY_COUNT(mac)){
-		up(&mac->sem);
-		printk(KERN_INFO "Readers detect MAC table not yet updated\n");
-		return 0;
-	}
+        n = GET_MAC_CHANGELIST_ENTRY_COUNT(mac);
+        if(!n){
+                up(&mac->sem);
+                printk(KERN_INFO "Readers detect MAC table not yet updated\n");
+                return 0;
+        }
 
-	printk(KERN_INFO "Readers detect MAC table has been updated !!\n");
-	up(&mac->sem);
-	return 1;
+        printk(KERN_INFO "Readers detect MAC table has been updated, new no of entries = %d\n", n);
+        up(&mac->sem);
+        return 1;	
 }
 
 int

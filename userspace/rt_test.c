@@ -10,6 +10,7 @@
 #include "threadApi.h"
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/select.h>
 
 int rt_fd = 0, mac_fd = 0;
 
@@ -45,6 +46,44 @@ print_mac_fetched_entries(char *buf, unsigned int size, unsigned int units){
 	printf("    |------|----------------------|----------------------|--------------|\n");
 }
 
+
+static void
+poll_rt_mac_table(){
+	/*assume that FD are open*/
+	fd_set readset;
+
+	char rt_buf[RT_MAX_ENTRIES_FETCH * sizeof(struct rt_entry)];
+	char mac_buf[MAC_MAX_ENTRIES_FETCH * sizeof(struct mac_entry)];
+
+	while(1){
+		FD_ZERO(&readset);
+		FD_SET(rt_fd, &readset);
+		FD_SET(mac_fd, &readset);
+		int max_fd = 0, rc = 0;
+		max_fd = (rt_fd > mac_fd) ? rt_fd : mac_fd;
+		printf("%s() : blocking on select sys call\n", __FUNCTION__);	
+		rc = select(max_fd + 1, &readset, NULL, NULL, NULL);
+		printf("select unblocked , rc = %d\n", rc);
+		if (FD_ISSET(rt_fd, &readset)){
+			printf("%s() : updates notification for rt arrives\n", __FUNCTION__);
+			memset(rt_buf, 0, sizeof(rt_buf));
+			rc = read(rt_fd, rt_buf, sizeof(rt_buf));
+			printf("Total Routes = %d\n", rc);
+			print_rt_fetched_entries(rt_buf, sizeof(rt_buf), rc);
+		}
+		if (FD_ISSET(mac_fd, &readset)){
+			printf("%s() : updates notification for mac arrives\n", __FUNCTION__);
+			memset(mac_buf, 0, sizeof(mac_buf));
+			rc = read(mac_fd, mac_buf, sizeof(mac_buf));
+			printf("Total Routes = %d\n", rc);
+			print_mac_fetched_entries(mac_buf, sizeof(mac_buf), rc);
+		}
+	}
+}
+
+
+
+
 static void
 mac_open(){
 
@@ -60,7 +99,7 @@ mac_open(){
 		6. O_NONBLOCK // disable blocking calls	
 	*/
 
-	if ((mac_fd = open("/dev/mac", O_RDWR)) == -1) {
+	if ((mac_fd = open("/dev/mac", O_RDWR /*| O_NONBLOCK*/)) == -1) {
 		perror("open failed");
 		exit(EXIT_SUCCESS);
 	}
@@ -110,7 +149,7 @@ rt_open(){
 		6. O_NONBLOCK // disable blocking calls	
 	*/
 
-	if ((rt_fd = open("/dev/rt", O_RDWR)) == -1) {
+	if ((rt_fd = open("/dev/rt", O_RDWR /*| O_NONBLOCK*/)) == -1) {
 		perror("open failed");
 		exit(EXIT_SUCCESS);
 	}
@@ -151,7 +190,7 @@ rt_close(){
 }
 
 static void rt_read_all(){	
-	char buf[MAX_ENTRIES_FETCH * sizeof(struct rt_entry)];
+	char buf[RT_MAX_ENTRIES_FETCH * sizeof(struct rt_entry)];
 	memset(buf, 0, sizeof(buf));
 	int n = read(rt_fd, buf, sizeof(buf));
 	if(n < 0)
@@ -166,7 +205,7 @@ static void rt_read_all(){
 
 
 static void mac_read_all(){	
-	char buf[MAX_ENTRIES_FETCH * sizeof(struct mac_entry)];
+	char buf[MAC_MAX_ENTRIES_FETCH * sizeof(struct mac_entry)];
 	memset(buf, 0, sizeof(buf));
 	int n = read(mac_fd, buf, sizeof(buf));
 	if(n < 0)
@@ -194,8 +233,104 @@ ioctl_get_rt_info(){
 }
 
 static void 
-rt_write(){}
+rt_write(){
 
+        struct rt_update_t update_msg;
+        int ret = 0;
+        char consume_new_line[2];
+        memset(&update_msg, 0, sizeof(struct rt_update_t));
+
+        /*consume last \n */
+
+        fgets((char *)consume_new_line, 2, stdin);
+
+        printf("Enter dest ip ? ");
+        if((fgets((char *)update_msg.entry.dst_ip, 15, stdin) == NULL)){
+                printf("error in reading from stdin\n");
+                exit(EXIT_SUCCESS);
+        }
+
+        update_msg.entry.dst_ip[strlen(update_msg.entry.dst_ip) - 1] = '\0';
+        printf("\nEnter nxt hop ip ? ");
+
+
+        if((fgets((char *)update_msg.entry.nxt_hop_ip, 15, stdin) == NULL)){
+                printf("error in reading from stdin\n");
+                exit(EXIT_SUCCESS);
+        }
+
+
+        update_msg.entry.nxt_hop_ip[strlen(update_msg.entry.nxt_hop_ip) - 1] = '\0';
+
+        printf("\nEnter oif ? ");
+
+        if((fgets((char *)update_msg.entry.oif, 15, stdin) == NULL)){
+                printf("error in reading from stdin\n");
+                exit(EXIT_SUCCESS);
+        }
+
+        update_msg.entry.oif[strlen(update_msg.entry.oif) - 1] = '\0';
+        update_msg.op_code = RT_ROUTE_ADD;
+
+        ret = write(rt_fd, &update_msg, sizeof(struct rt_update_t));
+
+        if(ret == sizeof(struct rt_update_t)){
+                printf("%s(): Success\n", __FUNCTION__);
+                return;
+        }
+
+        printf("%s(): Failure\n", __FUNCTION__);
+}
+
+
+static void 
+mac_write(){
+        struct mac_update_t update_msg;
+        int ret = 0;
+        char consume_new_line[2];
+        memset(&update_msg, 0, sizeof(struct mac_update_t));
+
+        /*consume last \n */
+
+        fgets((char *)consume_new_line, 2, stdin);
+
+        printf("Enter vlan id ? ");
+        if((fgets((char *)update_msg.entry.vlan_id, 15, stdin) == NULL)){
+                printf("error in reading from stdin\n");
+                exit(EXIT_SUCCESS);
+        }
+
+        update_msg.entry.vlan_id[strlen(update_msg.entry.vlan_id) - 1] = '\0';
+        printf("\nEnter mac addr ? ");
+
+
+        if((fgets((char *)update_msg.entry.mac, 48, stdin) == NULL)){
+                printf("error in reading from stdin\n");
+                exit(EXIT_SUCCESS);
+        }
+
+
+        update_msg.entry.mac[strlen(update_msg.entry.mac) - 1] = '\0';
+
+        printf("\nEnter oif ? ");
+
+        if((fgets((char *)update_msg.entry.oif, 15, stdin) == NULL)){
+                printf("error in reading from stdin\n");
+                exit(EXIT_SUCCESS);
+        }
+
+        update_msg.entry.oif[strlen(update_msg.entry.oif) - 1] = '\0';
+        update_msg.op_code = MAC_ROUTE_ADD;
+
+	ret = write(mac_fd, &update_msg, sizeof(struct mac_update_t));
+
+	if(ret == sizeof(struct mac_update_t)){
+                printf("%s(): Success\n", __FUNCTION__);
+                return;
+        }
+
+        printf("%s(): Failure\n", __FUNCTION__);
+}
 
 static void
 ioctl_add_mac_route(){
@@ -247,7 +382,7 @@ ioctl_add_mac_route(){
 }
 
 static void
-ioctl_add_route(){
+ioctl_add_rt_route(){
 	struct rt_update_t update_msg;
 	int ret = 0;
 	char consume_new_line[2];
@@ -309,7 +444,7 @@ ioctl_purge_device(){
 
 static void*
 rt_subscrption_fn(void * arg){
-	char *buf = calloc(MAX_ENTRIES_FETCH, sizeof(struct rt_update_t));
+	char *buf = calloc(RT_MAX_ENTRIES_FETCH, sizeof(struct rt_update_t));
 	int n = 0, i = 0; // no of routing updates
 	struct rt_update_t *update_msg = NULL;
 
@@ -323,7 +458,7 @@ rt_subscrption_fn(void * arg){
 			printf("%d. op_code = %d\n", i+1, update_msg->op_code);
 			print_rt_one_entry(i+1, &update_msg->entry);			
 		}
-		memset(buf, 0, MAX_ENTRIES_FETCH*sizeof(struct rt_update_t));
+		memset(buf, 0, RT_MAX_ENTRIES_FETCH*sizeof(struct rt_update_t));
 	}
 	return NULL;
 }
@@ -356,10 +491,13 @@ main_menu(){
 		printf("8. IOCTL delete route \n");
 		printf("9. IOCTL update route\n");
 		printf("10. IOCTL rt info\n");
+		printf("15. write() rt\n");
 		printf("------MAC TB operations-----\n");
 		printf("11. IOCTL add mac route\n");
 		printf("12. open MAC\n");
 		printf("13. read all from MAC\n");
+		printf("14. poll the RT and MAC\n");
+		printf("16. write() mac\n");
 		printf("Enter choice (1-9)\n");
 		scanf("%d", &choice);
 		switch (choice){
@@ -391,7 +529,7 @@ main_menu(){
 				}
 				break;
 			case 7:
-				ioctl_add_route();
+				ioctl_add_rt_route();
 				break;
 			case 8:
 				break;
@@ -402,6 +540,15 @@ main_menu(){
 				break;	
 			case 11:
 				ioctl_add_mac_route();
+				break;
+			case 14:
+				poll_rt_mac_table();
+				break;
+			case 15:
+				rt_write();
+				break;
+			case 16:
+				mac_write();
 				break;
 			default:
 			

@@ -46,6 +46,8 @@ struct mac_table{
 #define  MAC_SEM_LOCK_READER_Q(mac)       (SEM_LOCK(&mac->reader_Q->sem))
 #define  MAC_SEM_UNLOCK_READER_Q(mac)     (SEM_UNLOCK(&mac->reader_Q->sem))
 
+#define MAC_LOCK_SEM(mac)                 (SEM_LOCK(&mac->sem))
+#define MAC_UNLOCK_SEM(mac)               (SEM_UNLOCK(&mac->sem))
 
 struct mac_table * init_mac_table(void);
 
@@ -72,7 +74,7 @@ void purge_mac_table(struct mac_table *mac);
 void cleanup_mac_table(struct mac_table **mac);
 
 int
-mutex_is_mac_updated(unsigned int intial_node_cnt, struct mac_table *mac);
+mutex_is_mac_updated(struct mac_table *mac);
 
 void mac_set_worker_thread_fn(struct mac_table *mac, void *fn, void *fn_arg);
 

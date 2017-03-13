@@ -175,18 +175,20 @@ cleanup_rt_table(struct rt_table **_rt){
 }
 
 int 
-mutex_is_rt_updated(unsigned int intial_node_cnt, struct rt_table *rt){
+mutex_is_rt_updated(struct rt_table *rt){
 	
+	int n = 0;
 	if(down_interruptible(&rt->sem))
 		return -ERESTARTSYS;
 
-	if(intial_node_cnt == GET_RT_ENTRY_COUNT(rt)){
+	n = GET_RT_CHANGELIST_ENTRY_COUNT(rt);
+	if(!n){
 		up(&rt->sem);
 		printk(KERN_INFO "Readers detect RT table not yet updated\n");
 		return 0;
 	}
 
-	printk(KERN_INFO "Readers detect RT table has been updated !!\n");
+	printk(KERN_INFO "Readers detect RT table has been updated, new no of entries = %d\n", n);
 	up(&rt->sem);
 	return 1;
 }

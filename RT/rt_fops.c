@@ -4,6 +4,7 @@
 #include <asm/uaccess.h> // for datums
 #include <linux/slab.h>
 #include "../common/kernutils.h"
+#include  <linux/poll.h>
 
 extern struct rt_table *rt;
 
@@ -17,12 +18,14 @@ struct file_operations rt_fops = {
 	.release 	=     rt_release,
 	.unlocked_ioctl =     ioctl_rt_handler1,
 	.compat_ioctl   =     ioctl_rt_handler2,
+	.poll		=     rt_poll,
 };
 
 /* internal functions*/
 
 /* Global variables*/
 static unsigned int n_readers_to_be_service = 0; 
+static unsigned int n_poll_readers_to_be_service = 0; 
 struct semaphore rt_serialize_readers_cs_sem;
 static struct rt_update_t *rt_update_vector = NULL;
 static int rt_update_vector_count = 0;
@@ -59,18 +62,50 @@ ssize_t rt_read (struct file *filp, char __user *buf, size_t count, loff_t *f_po
 	ssize_t n_count = 0;
 	
 	down_read(&rt->rw_sem);
+	/* Whenever any change  in routing table is made by the writer in rt_write,  polling readers 
+	are sent entire routing table*/
+	printk(KERN_INFO "%s() poll reader %s\" (pid %i) is reading rt\n", __FUNCTION__, get_current()->comm, get_current()->pid);  
 	n_count = copy_rt_table_to_user_space(rt, buf, count);
-	up_read(&rt->rw_sem);
+	/* serialize the readers in  Exit of CS ,and last readers should remove the changelist*/
+	RT_LOCK_SEM(rt);
 
+	if(n_poll_readers_to_be_service== 1){
+		printk(KERN_INFO "%s() last poll reader %s\" (pid %i) has also read the rt update\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+		 printk(KERN_INFO "%s() last poll reader %s\" (pid %i) has deleted the change list\n", __FUNCTION__, get_current()->comm, get_current()->pid);	
+		rt_empty_change_list(rt);
+	}	
+
+	n_poll_readers_to_be_service--;
+	RT_UNLOCK_SEM(rt);
+	up_read(&rt->rw_sem);
 	return n_count;
 }
 
 
 ssize_t rt_write (struct file *filp, const char __user *buf, size_t count, loff_t *f_pos){
 
+	struct rt_update_t kmsg;
 	printk(KERN_INFO "%s() is called , filep = 0x%x, user buff = 0x%x, buff_size = %d\n",
 			__FUNCTION__, (unsigned int) filp, (unsigned int) buf, count);
-	return 0;
+
+
+	memset(&kmsg, 0, sizeof(struct rt_update_t));
+
+	if(access_ok(VERIFY_READ, (void __user*)buf, count) ==  0){
+		printk(KERN_INFO "%s() : invalid user space ptr\n", __FUNCTION__);
+		return 0;
+	}
+
+	copy_from_user(&kmsg, (void __user *)buf, sizeof(struct rt_update_t));
+
+	/* down_write/up_write is same as RT_LOCK_SEM(rt)/RT_UNLOCK_SEM(rt) in write case*/
+	down_write(&rt->rw_sem); //RT_LOCK_SEM(rt);
+	apply_rt_updates(rt, &kmsg);
+	up_write(&rt->rw_sem); //RT_UNLOCK_SEM(rt);
+	printk(KERN_INFO "%s() \"%s\" sending wake_up call to rt->readerQ\n", __FUNCTION__, get_current()->comm);
+	wake_up(&rt->readerQ); // wake up the polling reader processes, poll fn is called again
+	
+	return sizeof(struct rt_update_t);
 }
 
 static int
@@ -133,6 +168,7 @@ int rt_worker_fn(void *arg){
 	wait_for_completion(&worker_thread->completion);
 	printk(KERN_INFO "worker thread has recieved the wakeup signal from writer thread, woken up \n");
 	printk(KERN_INFO "worker thread is calculating the no of readers in reader_q now\n");
+
 	RT_SEM_LOCK_READER_Q(rt);
 	n_readers_to_be_service = Q_COUNT(rt->reader_Q);
 	RT_SEM_UNLOCK_READER_Q(rt);	
@@ -208,8 +244,11 @@ long ioctl_rt_handler1 (struct file *filep, unsigned int cmd, unsigned long arg)
 				wake_up_interruptible(&rt->writerQ);
 				wait_for_completion(&writer_thread->completion);
 				
-				printk(KERN_INFO "writer thread \"%s\" (pid %i) resumes and granted access to rt\n", writer_thread->task->comm, writer_thread->task->pid);	
+				printk(KERN_INFO "writer thread \"%s\" (pid %i) resumes and granted access to rt\n", writer_thread->task->comm, writer_thread->task->pid);
+				/* we are locking it because, during polling, the table status could be queried*/
+				RT_LOCK_SEM(rt);	
 				apply_rt_updates(rt, &kmsg);
+				RT_UNLOCK_SEM(rt);
 				printk(KERN_INFO "writer thread \"%s\" (pid %i) has updated the rt\n", writer_thread->task->comm, writer_thread->task->pid);
 
 				printk(KERN_INFO "writer thread \"%s\" (pid %i) invoking the worker thread now\n", writer_thread->task->comm, writer_thread->task->pid);
@@ -336,7 +375,7 @@ long ioctl_rt_handler1 (struct file *filep, unsigned int cmd, unsigned long arg)
 				printk(KERN_INFO "reader process \"%s\" (pid %i) enters the system\n",	
 						reader_thread->task->comm, reader_thread->task->pid);
 			
-				if(access_ok(VERIFY_WRITE, (void __user*)arg, sizeof(struct rt_update_t) * MAX_ENTRIES_FETCH) ==  0){
+				if(access_ok(VERIFY_WRITE, (void __user*)arg, sizeof(struct rt_update_t) * RT_MAX_ENTRIES_FETCH) ==  0){
 					printk(KERN_INFO "%s() : invalid user space ptr\n", __FUNCTION__);
 					return rc;
 				}
@@ -344,8 +383,8 @@ long ioctl_rt_handler1 (struct file *filep, unsigned int cmd, unsigned long arg)
 				printk(KERN_INFO "No of rt updates to be read by reader thread \"%s\" (pid %i) = %u\n", 
 					reader_thread->task->comm, reader_thread->task->pid, rt_update_vector_count);	
 
-				if(rt_update_vector_count > MAX_ENTRIES_FETCH)
-					rt_update_vector_count = MAX_ENTRIES_FETCH;
+				if(rt_update_vector_count > RT_MAX_ENTRIES_FETCH)
+					rt_update_vector_count = RT_MAX_ENTRIES_FETCH;
 
 				printk(KERN_INFO "reader thread \"%s\" (pid %i) is locking the reader Queue = 0x%x, reader Queue count = %u\n",
                                                 reader_thread->task->comm, reader_thread->task->pid, (unsigned int)rt->reader_Q, Q_COUNT(rt->reader_Q));
@@ -405,3 +444,52 @@ long ioctl_rt_handler2 (struct file *filep, unsigned int cmd, unsigned long arg)
 	return 0;
 }
 
+unsigned int rt_poll (struct file *filep, struct poll_table_struct *poll_table){
+
+#define WAIT_FOR_DATA_AVAILABILITY	0
+#define WAIT_FOR_DATA_WRITE		0
+
+	unsigned int isDataAvailable = 0; // 0 not, >0 means yes
+	printk(KERN_INFO "%s() is called , filep = 0x%x, poll_table = 0x%x\n", __FUNCTION__, (unsigned int)filep,
+										(unsigned int)poll_table);
+	/* if data is not available then choose one out of  two actions. refer rules on page 166, LDD3
+	   1. if O_NONBLOCK flag is set, then return immediately with return value -EAGAIN
+	   2. if O_NONBLOCK flag is not set, then block untill atleast one byte of data is available
+	   return 0;
+	 */
+
+	/* lock the rt table, hence, in case if writers writing into rt, rt should be locked by sem*/
+	isDataAvailable = mutex_is_rt_updated(rt);
+
+	switch(isDataAvailable){
+		/* Data not Available*/
+		case 0: 
+			{
+				if(IS_FILE_ACCESS_FLAG_SET(filep, O_NONBLOCK)){
+					return -EAGAIN; // select return 2 in user space corresponding to this
+				}
+
+				/* O_NONBLOCK is not set now, block and wait for data arrival*/
+				poll_wait(filep, &rt->readerQ, poll_table);
+				printk(KERN_INFO "%s() poll_wait is called\n", __FUNCTION__); 
+				/* The above call is not a blocking call, it simply adds the 'current' process into wait queue*/	
+				/* kernel do not return to user space here, means, user space stays blocked in select*/	
+				n_poll_readers_to_be_service++;	
+				printk(KERN_INFO "%s() Data not available, \"%s\" (pid %i) is blocking, no of poll readers in waiting state = %u\n", 
+							__FUNCTION__, get_current()->comm, get_current()->pid, n_poll_readers_to_be_service);
+				/* These readers will be revoked by rt_write*/
+				return WAIT_FOR_DATA_AVAILABILITY; // returning 0 will block this thread by kernel untill wake up is called on wait queue
+			}
+			break;
+		default:
+			/* Data Available
+			 Now doesnt matter what is flag settings, return to user space immediately
+			telling user program that data is available to be read
+			*/
+			{
+				return POLLIN|POLLRDNORM;	
+			}
+			break;
+	}
+	return 0;	
+}

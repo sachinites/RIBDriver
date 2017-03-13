@@ -4,6 +4,6 @@ rt_table_drv-objs += rt_register_drv.o common/LinkedListApi.o RT/rt_table.o RT/r
 
 mac_table_drv-objs += mac_register_drv.o common/LinkedListApi.o MAC/mac_table.o MAC/mac_fops.o common/kernthread.o common/Queue.o common/kernutils.o
 all:
-	make -C /lib/modules/4.1.27/build ARCH=um M=$(PWD) modules
+	make -C /lib/modules/`uname -r`/build M=$(PWD) modules
 clean:
-	make -C /lib/modules/4.1.27/build ARCH=um M=$(PWD) clean
+	make -C /lib/modules/`uname -r`/build M=$(PWD) clean

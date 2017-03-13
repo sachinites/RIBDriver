@@ -45,7 +45,7 @@ struct mac_entry {
         char oif[16];
 };
 
-#define MAX_ENTRIES_FETCH	20
+#define MAC_MAX_ENTRIES_FETCH	20
 
 /* structure to send update from userspace to kernel and vice versa*/
 struct mac_update_t{
