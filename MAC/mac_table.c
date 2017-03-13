@@ -28,9 +28,35 @@ struct mac_table * init_mac_table(void){
 	mac->writer_Q = initQ(); 
 	mac->mac = init_singly_ll();
 	mac->mac_change_list = init_singly_ll();
+	mac->poll_readers_list = init_singly_ll();
 	mac->worker_thread = new_kern_thread(&mac_worker_fn, NULL, "mac_worker_thread");
 	return mac;
 }
+
+int
+mutex_mac_get_pollar_readers_count(struct mac_table *mac){
+        int count = 0;
+        MAC_LOCK_SEM(mac);
+        count = MAC_GET_POLL_READER_COUNT(mac);
+        MAC_UNLOCK_SEM(mac);
+        return count;
+}
+
+void
+add_mac_table_unique_poll_reader(struct mac_table *mac, struct file *filep){
+
+        struct singly_ll_node_t *node = NULL;
+        node = singly_ll_is_value_present(mac->poll_readers_list, &filep, sizeof(struct file **));
+
+        if(node == NULL){
+                printk(KERN_INFO "%s() filep =0x%x added to unique_poll_reader list\n" , __FUNCTION__, (unsigned int)filep);
+                singly_ll_add_node_by_val(mac->poll_readers_list, &filep, sizeof(struct file **));
+                return;
+        }
+        printk(KERN_INFO "%s() filep =0x%x already present, ignored \n", __FUNCTION__, (unsigned int)filep);
+}
+
+
 
 int
 add_mac_table_entry_by_val(struct mac_table *mac, 

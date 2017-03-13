@@ -57,6 +57,7 @@ struct mac_info_t{
 	unsigned int node_count;
 	unsigned int actual_node_count;
 	unsigned int no_of_pending_updates;
+	unsigned int no_of_polling_readers;
 };
 
 #endif

@@ -25,10 +25,14 @@ struct file_operations rt_fops = {
 
 /* Global variables*/
 static unsigned int n_readers_to_be_service = 0; 
-static unsigned int n_poll_readers_to_be_service = 0; 
-struct semaphore rt_serialize_readers_cs_sem;
+static struct semaphore rt_serialize_readers_cs_sem;
 static struct rt_update_t *rt_update_vector = NULL;
 static int rt_update_vector_count = 0;
+
+void rt_driver_init(void){
+	sema_init(&rt_serialize_readers_cs_sem, 1);
+}
+
 
 int rt_open (struct inode *inode, struct file *filp){
 
@@ -60,23 +64,26 @@ int rt_release (struct inode *inode, struct file *filp){
 ssize_t rt_read (struct file *filp, char __user *buf, size_t count, loff_t *f_pos){
 	
 	ssize_t n_count = 0;
-	
 	down_read(&rt->rw_sem);
 	/* Whenever any change  in routing table is made by the writer in rt_write,  polling readers 
 	are sent entire routing table*/
-	printk(KERN_INFO "%s() poll reader %s\" (pid %i) is reading rt\n", __FUNCTION__, get_current()->comm, get_current()->pid);  
+	printk(KERN_INFO "%s() poll reader %s\" (pid %i) is reading rt, no of polling readers = %u\n", __FUNCTION__, get_current()->comm, get_current()->pid, RT_GET_POLL_READER_COUNT(rt));  
 	n_count = copy_rt_table_to_user_space(rt, buf, count);
 	/* serialize the readers in  Exit of CS ,and last readers should remove the changelist*/
-	RT_LOCK_SEM(rt);
+	SEM_LOCK(&rt_serialize_readers_cs_sem);
 
-	if(n_poll_readers_to_be_service== 1){
+#if 1
+	if(RT_GET_POLL_READER_COUNT(rt) == 1){
 		printk(KERN_INFO "%s() last poll reader %s\" (pid %i) has also read the rt update\n", __FUNCTION__, get_current()->comm, get_current()->pid);
-		 printk(KERN_INFO "%s() last poll reader %s\" (pid %i) has deleted the change list\n", __FUNCTION__, get_current()->comm, get_current()->pid);	
+		printk(KERN_INFO "%s() last poll reader %s\" (pid %i) has deleted the change list\n", __FUNCTION__, get_current()->comm, get_current()->pid);	
 		rt_empty_change_list(rt);
 	}	
 
-	n_poll_readers_to_be_service--;
-	RT_UNLOCK_SEM(rt);
+	printk(KERN_INFO "%s() poll reader %s\" (pid %i) has read the data, removed from poll readers list\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+	RT_REMOVE_POLL_READER(rt, &filp);
+	printk(KERN_INFO "%s() No of pending poll readers yet to read data = %u\n", __FUNCTION__, RT_GET_POLL_READER_COUNT(rt));
+#endif
+	SEM_UNLOCK(&rt_serialize_readers_cs_sem);
 	up_read(&rt->rw_sem);
 	return n_count;
 }
@@ -361,6 +368,9 @@ long ioctl_rt_handler1 (struct file *filep, unsigned int cmd, unsigned long arg)
 				update_count = GET_RT_CHANGELIST_ENTRY_COUNT(rt);
 				put_user(update_count, &(rt_info->no_of_pending_updates));
 
+				counter = RT_GET_POLL_READER_COUNT(rt);
+				put_user(counter, &(rt_info->no_of_polling_readers));
+
 				up_read(&rt->rw_sem);
 #if 0
 				copy_to_user((void __user *)&(rt_info->actual_node_count), &actual_count, 
@@ -459,6 +469,11 @@ unsigned int rt_poll (struct file *filep, struct poll_table_struct *poll_table){
 	 */
 
 	/* lock the rt table, hence, in case if writers writing into rt, rt should be locked by sem*/
+	/* Add unique file pointers to the rt->poll_readers_list to keep trackof unique poll readers
+	  if file desc is already present, then no op
+	*/
+	add_rt_table_unique_poll_reader(rt, filep);
+
 	isDataAvailable = mutex_is_rt_updated(rt);
 
 	switch(isDataAvailable){
@@ -474,9 +489,8 @@ unsigned int rt_poll (struct file *filep, struct poll_table_struct *poll_table){
 				printk(KERN_INFO "%s() poll_wait is called\n", __FUNCTION__); 
 				/* The above call is not a blocking call, it simply adds the 'current' process into wait queue*/	
 				/* kernel do not return to user space here, means, user space stays blocked in select*/	
-				n_poll_readers_to_be_service++;	
-				printk(KERN_INFO "%s() Data not available, \"%s\" (pid %i) is blocking, no of poll readers in waiting state = %u\n", 
-							__FUNCTION__, get_current()->comm, get_current()->pid, n_poll_readers_to_be_service);
+				printk(KERN_INFO "%s() Data not available, \"%s\" (pid %i) is blocking\n", 
+							__FUNCTION__, get_current()->comm, get_current()->pid);
 				/* These readers will be revoked by rt_write*/
 				return WAIT_FOR_DATA_AVAILABILITY; // returning 0 will block this thread by kernel untill wake up is called on wait queue
 			}

@@ -23,16 +23,13 @@ struct rt_table *rt = NULL;
 /* Import device file operations*/
 
 extern struct file_operations rt_fops;
-//extern spinlock_t cross_bndry_spin_lock;
-extern struct semaphore rt_serialize_readers_cs_sem;
+extern void rt_driver_init(void);
 
 int
 char_driver_init_module(void){
 	int rc = SUCCESS;
 
 	printk(KERN_INFO "%s() is called\n", __FUNCTION__);
-	sema_init(&rt_serialize_readers_cs_sem, 1);
-
 	/* 1. rt_table device registration*/	
 	{
 		dev = MKDEV(RT_MAJOR_NUMBER, 0);
@@ -51,6 +48,8 @@ char_driver_init_module(void){
 		/* add device to kernel finally*/
 		rc = cdev_add (&rt->cdev, dev, RT_MINOR_UNITS);
 		if(rc !=0) goto CDEV_ADD_FAILED;
+		
+		rt_driver_init();
 	}
 
 	return rc;

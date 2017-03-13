@@ -25,10 +25,14 @@ struct file_operations mac_fops = {
 
 /* Global variables*/
 static unsigned int n_readers_to_be_service = 0; 
-static unsigned int n_poll_readers_to_be_service = 0;
-struct semaphore mac_serialize_readers_cs_sem;
+static struct semaphore mac_serialize_readers_cs_sem;
 static struct mac_update_t *mac_update_vector = NULL;
 static int mac_update_vector_count = 0;
+
+
+void mac_driver_init(void){
+	sema_init(&mac_serialize_readers_cs_sem, 1);
+}
 
 int mac_open (struct inode *inode, struct file *filp){
 
@@ -60,23 +64,26 @@ int mac_release (struct inode *inode, struct file *filp){
 ssize_t mac_read (struct file *filp, char __user *buf, size_t count, loff_t *f_pos){
 
 	ssize_t n_count = 0;
-
 	down_read(&mac->rw_sem);
 	/* Whenever any change  in routing table is made by the writer in mac_write,  polling readers
 	   are sent entire mac table*/
-	printk(KERN_INFO "%s() poll reader %s\" (pid %i) is reading mac\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+	printk(KERN_INFO "%s() poll reader %s\" (pid %i) is reading mac,  no of polling readers = %u\n", __FUNCTION__, get_current()->comm, get_current()->pid, MAC_GET_POLL_READER_COUNT(mac));
 	n_count = copy_mac_table_to_user_space(mac, buf, count);
 	/* serialize the readers in  Exit of CS ,and last readers should remove the changelist*/
-	MAC_LOCK_SEM(mac);
+	SEM_LOCK(&mac_serialize_readers_cs_sem);
 
-	if(n_poll_readers_to_be_service== 1){
+#if 1
+	if(MAC_GET_POLL_READER_COUNT(mac) == 1){
 		printk(KERN_INFO "%s() last poll reader %s\" (pid %i) has also read the mac update\n", __FUNCTION__, get_current()->comm, get_current()->pid);
 		printk(KERN_INFO "%s() last poll reader %s\" (pid %i) has deleted the change list\n", __FUNCTION__, get_current()->comm, get_current()->pid);
 		mac_empty_change_list(mac);
 	}
 
-	n_poll_readers_to_be_service--;
-	MAC_UNLOCK_SEM(mac);
+	printk(KERN_INFO "%s() poll reader %s\" (pid %i) has read the data, removed from poll readers list\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+	MAC_REMOVE_POLL_READER(mac, &filp);
+	printk(KERN_INFO "%s() No of pending poll readers yet to read data = %u\n", __FUNCTION__, MAC_GET_POLL_READER_COUNT(mac));
+#endif
+	SEM_UNLOCK(&mac_serialize_readers_cs_sem);
 	up_read(&mac->rw_sem);
 	return n_count;
 }
@@ -106,7 +113,6 @@ ssize_t mac_write (struct file *filp, const char __user *buf, size_t count, loff
         wake_up(&mac->readerQ); // wake up the polling reader processes, poll fn is called again
 
 	return sizeof(struct mac_update_t);
-
 }
 
 static int
@@ -449,7 +455,7 @@ unsigned int mac_poll (struct file *filep, struct poll_table_struct *poll_table)
 #define WAIT_FOR_DATA_AVAILABILITY      0
 #define WAIT_FOR_DATA_WRITE             0
 
-	int isDataAvailable = 0; // 0 not, >0 means yes
+	unsigned int isDataAvailable = 0; // 0 not, >0 means yes
 	printk(KERN_INFO "%s() is called , filep = 0x%x, poll_table = 0x%x\n", __FUNCTION__, (unsigned int)filep,
 										(unsigned int)poll_table);
 	/* if data is not available then choose one out of  two actions. refer rules on page 166, LDD3
@@ -458,7 +464,11 @@ unsigned int mac_poll (struct file *filep, struct poll_table_struct *poll_table)
 	   return 0;
 	 */
 
+	
 	/* lock the mac table, hence, in case if writers writing into mac, mac should be locked by sem*/
+
+	add_mac_table_unique_poll_reader(mac, filep);
+
 	isDataAvailable = mutex_is_mac_updated(mac);
 
 	switch(isDataAvailable){
@@ -475,9 +485,8 @@ unsigned int mac_poll (struct file *filep, struct poll_table_struct *poll_table)
 				/* The above call is not a blocking call, it simply adds the 'current' process into wait queue*/
 
 			        /* kernel do not return to user space here, means, user space stays blocked in select*/
-				n_poll_readers_to_be_service++;
-				printk(KERN_INFO "%s() Data not available, \"%s\" (pid %i) is blocking, no of poll readers in waiting state = %u\n",
-                                                        __FUNCTION__, get_current()->comm, get_current()->pid, n_poll_readers_to_be_service);
+				printk(KERN_INFO "%s() Data not available, \"%s\" (pid %i) is blocking\n",
+                                                        __FUNCTION__, get_current()->comm, get_current()->pid);
 
                                 //wait_event_interruptible(mac->readerQ, GET_MAC_CHANGELIST_ENTRY_COUNT(mac));
                                 //printk(KERN_INFO "%s() Data became available, returning to user space\n", __FUNCTION__);

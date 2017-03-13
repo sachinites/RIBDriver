@@ -5,10 +5,10 @@ OBJ=threadApi.o
 TARGET:exe
 %.o:%.c
 	${CC} ${CFLAGS} -c -I . $<
-exe: ${OBJ} rt_test.o
-	${CC} ${CFLAGS}  rt_test.o ${OBJ} -o exe ${LIBS}
-rt_test.o:rt_test.c
-	${CC} ${CFLAGS} -c rt_test.c -o rt_test.o
+exe: ${OBJ} dr_test.o
+	${CC} ${CFLAGS}  dr_test.o ${OBJ} -o exe ${LIBS}
+rt_test.o:dr_test.c
+	${CC} ${CFLAGS} -c dr_test.c -o dr_test.o
 clean:
 	rm *.o
 	rm exe

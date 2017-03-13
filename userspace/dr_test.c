@@ -229,6 +229,7 @@ ioctl_get_rt_info(){
 	printf("	node count = %u\n", rt_info.node_count);
 	printf("        Actual node count = %u\n", rt_info.actual_node_count);
 	printf("        # of pending updates = %u\n", rt_info.no_of_pending_updates);
+	printf("        # no_of_polling_readers = %u\n", rt_info.no_of_polling_readers);
 	printf("---------------------------------\n");
 }
 
@@ -483,13 +484,13 @@ main_menu(){
 		printf("Main Menu\n");
 		printf("1. open RT\n");
 		printf("2. purge RT\n");
-		printf("3. Subscribe RT\n");
+		printf("3. Subscribe RT (SYNC)\n");
 		printf("4. read All from RT\n");
 		printf("5. close RT\n");
 		printf("6. fork a new process\n");
-		printf("7. IOCTL add route\n");
-		printf("8. IOCTL delete route \n");
-		printf("9. IOCTL update route\n");
+		printf("7. IOCTL add route (SYNC)\n");
+		printf("8. IOCTL delete route (SYNC)\n");
+		printf("9. IOCTL update route (SYNC)\n");
 		printf("10. IOCTL rt info\n");
 		printf("15. write() rt\n");
 		printf("------MAC TB operations-----\n");
@@ -498,6 +499,7 @@ main_menu(){
 		printf("13. read all from MAC\n");
 		printf("14. poll the RT and MAC\n");
 		printf("16. write() mac\n");
+		printf("17. exit\n");
 		printf("Enter choice (1-9)\n");
 		scanf("%d", &choice);
 		switch (choice){
@@ -550,6 +552,8 @@ main_menu(){
 			case 16:
 				mac_write();
 				break;
+			case 17:
+				exit(0);
 			default:
 			
 				;

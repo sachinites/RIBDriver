@@ -114,47 +114,43 @@ singly_ll_add_node_by_val(struct ll_t *ll, void *data, unsigned int data_size){
     return singly_ll_add_node(ll, node);
 }
 
-enum rc_t
+enum rc_t 
 singly_ll_remove_node(struct ll_t *ll, struct singly_ll_node_t *node){
+	
+	int i = 0;
+	struct singly_ll_node_t *head = NULL, *prev = NULL;
+	if(!ll || !GET_HEAD_SINGLY_LL(ll)) return LL_SUCCESS;
+	if(!node){
+		return LL_FAILURE;
+	}
+	head = GET_HEAD_SINGLY_LL(ll);
 
-    struct singly_ll_node_t *trav = NULL;
+	if(head == node){
+		GET_HEAD_SINGLY_LL(ll) = GET_NEXT_NODE_SINGLY_LL(head);
+		DEC_NODE_COUNT_SINGLY_LL(ll);
+		node->next = NULL;
+		return LL_SUCCESS;
+	}
 
-    if(!ll) return LL_FAILURE;
-    if(!GET_HEAD_SINGLY_LL(ll) || !node) return LL_SUCCESS;
-    /*if node is not the last node*/
-    if(node->next){
-        struct singly_ll_node_t *temp = NULL;
-        node->data = node->next->data;
-        temp = node->next;
-        node->next = node->next->next;
-	if(temp->data) kfree(temp->data);
-        kfree(temp);
-        DEC_NODE_COUNT_SINGLY_LL(ll);
-        return LL_SUCCESS;
-    }
+	prev = head;
+	head = GET_NEXT_NODE_SINGLY_LL(head);
+	for(i =1; i < GET_NODE_COUNT_SINGLY_LL(ll); i++){
+		if(head != node){
+			prev = head;
+			head = GET_NEXT_NODE_SINGLY_LL(head);
+			continue;
+		}
 
-    /* if node is the only node in LL*/
-    if(ll->node_count == 1 && GET_HEAD_SINGLY_LL(ll) == node){
-	if(node->data) kfree(node->data);
-        kfree(node);
-        GET_HEAD_SINGLY_LL(ll) = NULL;
-        DEC_NODE_COUNT_SINGLY_LL(ll);
-        return LL_SUCCESS;
-    }
-
-    /*if node is the last node of the LL*/
-    trav = GET_HEAD_SINGLY_LL(ll);
-    while(trav->next != node){
-        trav = trav->next;
-        continue;
-    }
-    
-    trav->next = NULL;
-    if(node->data) kfree(node->data);
-    kfree(node);
-    DEC_NODE_COUNT_SINGLY_LL(ll);
-    return LL_SUCCESS;
+		GET_NEXT_NODE_SINGLY_LL(prev) = GET_NEXT_NODE_SINGLY_LL(head);
+		GET_NEXT_NODE_SINGLY_LL(head) = NULL;
+		DEC_NODE_COUNT_SINGLY_LL(ll);
+		node->next = NULL;
+		return LL_SUCCESS;
+	}
+	return LL_FAILURE;
 }
+
+
 
 unsigned int
 singly_ll_remove_node_by_value(struct ll_t *ll, void *key, unsigned int key_size){
@@ -170,6 +166,7 @@ singly_ll_remove_node_by_value(struct ll_t *ll, void *key, unsigned int key_size
     while(trav != NULL){
         if(memcmp(trav->data, key, key_size) == 0){
             singly_ll_remove_node(ll, trav);
+	    kfree(trav);
 	    return curren_node_count - GET_NODE_COUNT_SINGLY_LL(ll);
         }
         trav = trav->next;
@@ -319,3 +316,17 @@ delete_singly_ll(struct ll_t *ll){
         ll->head = NULL;
 }
 
+struct singly_ll_node_t *
+singly_ll_is_value_present(struct ll_t *ll, void *data, unsigned int data_size){
+	struct singly_ll_node_t *head = NULL;
+	
+	if(!ll || !data) assert(0);
+
+	head = GET_HEAD_SINGLY_LL(ll);;
+	while(head){
+		if(memcmp(head->data, data, data_size) == 0)
+			return head;
+		head = GET_NEXT_NODE_SINGLY_LL(head);
+	}
+	return NULL;
+}

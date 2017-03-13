@@ -23,15 +23,13 @@ struct mac_table *mac = NULL;
 /* Impomac device file operations*/
 
 extern struct file_operations mac_fops;
-//extern spinlock_t cross_bndry_spin_lock;
-extern struct semaphore mac_serialize_readers_cs_sem;
+extern void mac_driver_init(void);
 
 int
 char_driver_init_module(void){
 	int rc = SUCCESS;
 
 	printk(KERN_INFO "%s() is called\n", __FUNCTION__);
-	sema_init(&mac_serialize_readers_cs_sem, 1);
 
 	/* 1. mac_table device registration*/	
 	{
@@ -51,6 +49,8 @@ char_driver_init_module(void){
 		/* add device to kernel finally*/
 		rc = cdev_add (&mac->cdev, dev, MAC_MINOR_UNITS);
 		if(rc !=0) goto CDEV_ADD_FAILED;
+
+	 	mac_driver_init();
 	}
 
 	return rc;

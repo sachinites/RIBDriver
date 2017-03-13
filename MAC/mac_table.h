@@ -29,6 +29,7 @@ struct mac_table{
 	struct Queue_t *reader_Q;
 	struct Queue_t *writer_Q;	
 	struct ll_t *mac_change_list;	
+	struct ll_t *poll_readers_list;
 	struct cdev cdev;
 };
 
@@ -48,6 +49,10 @@ struct mac_table{
 
 #define MAC_LOCK_SEM(mac)                 (SEM_LOCK(&mac->sem))
 #define MAC_UNLOCK_SEM(mac)               (SEM_UNLOCK(&mac->sem))
+
+#define MAC_GET_POLL_READER_COUNT(mac)   (GET_NODE_COUNT_SINGLY_LL(mac->poll_readers_list))
+#define MAC_REMOVE_POLL_READER(mac, ptr) (singly_ll_remove_node_by_value(mac->poll_readers_list, ptr, sizeof(void *)))
+
 
 struct mac_table * init_mac_table(void);
 
@@ -86,5 +91,11 @@ mac_empty_change_list(struct mac_table *mac);
 
 int
 mac_get_updated_mac_entries(struct mac_table *mac, struct mac_update_t **mac_update_vector);
+
+struct file;
+
+void
+add_mac_table_unique_poll_reader(struct mac_table *mac, struct file *filep);
+
 
 #endif

@@ -28,8 +28,32 @@ struct rt_table * init_rt_table(void){
 	rt->writer_Q = initQ(); 
 	rt->rt = init_singly_ll();
 	rt->rt_change_list = init_singly_ll();
+	rt->poll_readers_list = init_singly_ll();
 	rt->worker_thread = new_kern_thread(&rt_worker_fn, NULL, "rt_worker_thread");
 	return rt;
+}
+
+int
+mutex_rt_get_pollar_readers_count(struct rt_table *rt){
+	int count = 0;
+	RT_LOCK_SEM(rt);
+	count = RT_GET_POLL_READER_COUNT(rt);
+	RT_UNLOCK_SEM(rt);
+	return count;
+}
+
+void
+add_rt_table_unique_poll_reader(struct rt_table *rt, struct file *filep){
+
+	struct singly_ll_node_t *node = NULL;
+	node = singly_ll_is_value_present(rt->poll_readers_list, &filep, sizeof(struct file **));
+
+	if(node == NULL){
+		printk(KERN_INFO "%s() filep =0x%x added to unique_poll_reader list\n" , __FUNCTION__, (unsigned int)filep);
+		singly_ll_add_node_by_val(rt->poll_readers_list, &filep, sizeof(struct file **));
+		return;
+	}
+	printk(KERN_INFO "%s() filep =0x%x already present, ignored \n", __FUNCTION__, (unsigned int)filep);
 }
 
 int

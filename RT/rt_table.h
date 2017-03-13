@@ -26,9 +26,10 @@ struct rt_table{
 	wait_queue_head_t readerQ; // Queue of processes waiting to read the RT update
 	wait_queue_head_t writerQ; // Queue of processes waiting to write to RT	
 	struct kernthread *worker_thread; // every resouce has a worker thread whose job is to share the resource between readers writers
-	struct Queue_t *reader_Q;
+	struct Queue_t *reader_Q; // no of synchronised readers
 	struct Queue_t *writer_Q;	
-	struct ll_t *rt_change_list;	
+	struct ll_t *rt_change_list;
+	struct ll_t *poll_readers_list; // no of readers who poll the device	
 	struct cdev cdev;
 };
 
@@ -47,6 +48,9 @@ struct rt_table{
 
 #define RT_LOCK_SEM(rt)			(SEM_LOCK(&rt->sem))
 #define RT_UNLOCK_SEM(rt)               (SEM_UNLOCK(&rt->sem))
+
+#define RT_GET_POLL_READER_COUNT(rt)	(GET_NODE_COUNT_SINGLY_LL(rt->poll_readers_list))
+#define RT_REMOVE_POLL_READER(rt, ptr)	(singly_ll_remove_node_by_value(rt->poll_readers_list, ptr, sizeof(void *)))
 
 struct rt_table * init_rt_table(void);
 
@@ -85,5 +89,10 @@ rt_empty_change_list(struct rt_table *rt);
 
 int
 rt_get_updated_rt_entries(struct rt_table *rt, struct rt_update_t **rt_update_vector);
+
+struct file;
+
+void
+add_rt_table_unique_poll_reader(struct rt_table *rt, struct file *filep);
 
 #endif
