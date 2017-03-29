@@ -24,10 +24,11 @@ singly_ll_delete_node(struct ll_t *ll, struct singly_ll_node_t *node){
     if(!GET_HEAD_SINGLY_LL(ll) || !node) return 0;
     /*if node is not the last node*/
     if(node->next){
+	kfree(node->data);
+	node->data = NULL;
         node->data = node->next->data;
         temp = node->next;
         node->next = node->next->next;
-	if(temp->data) kfree(temp->data);
         kfree(temp);
         DEC_NODE_COUNT_SINGLY_LL(ll);
         return LL_SUCCESS;
@@ -61,6 +62,8 @@ singly_ll_delete_node_by_value(struct ll_t *ll, void *key, unsigned int size){
     
     unsigned int curren_node_count = GET_NODE_COUNT_SINGLY_LL(ll);
     struct singly_ll_node_t* trav = GET_HEAD_SINGLY_LL(ll);
+
+    printk(KERN_INFO "%s() called for 0x%x element deletion, list addr = 0x%x\n", __FUNCTION__, (unsigned int)*(unsigned int *)key, (unsigned int )ll);
 
     if(!ll || !GET_HEAD_SINGLY_LL(ll)) return 0;
     while(trav != NULL){
@@ -183,6 +186,9 @@ void print_singly_LL(struct ll_t *ll){
         printk(KERN_INFO "Invalid Linked List\n"); 
         return;
     }
+
+    printk("%s() : list addr = 0x%x\n", __FUNCTION__, (unsigned int)ll);
+
     if(is_singly_ll_empty(ll)){
         printk(KERN_INFO "Empty Linked List\n");
         return;
@@ -192,7 +198,7 @@ void print_singly_LL(struct ll_t *ll){
     i = 0;
     printk(KERN_INFO "node count = %d\n", GET_NODE_COUNT_SINGLY_LL(ll));
     while(trav){
-        printk(KERN_INFO "%d. Data = 0x%x, data_size = %d\n", i, (unsigned int)trav->data, trav->data_size);
+        printk(KERN_INFO "%d. Data = 0x%x, data_size = %d\n", i, (unsigned int)(*(unsigned int *)trav->data), trav->data_size);
         i++;
         trav = trav->next;
     }

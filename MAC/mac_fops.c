@@ -28,20 +28,27 @@ static unsigned int n_readers_to_be_service = 0;
 static struct semaphore mac_serialize_readers_cs_sem;
 static struct mac_update_t *mac_update_vector = NULL;
 static int mac_update_vector_count = 0;
+static struct ll_t *black_listed_poll_readers_list = NULL; // poll readers who attempt to read the same  update again
 
 
 void mac_driver_init(void){
 	sema_init(&mac_serialize_readers_cs_sem, 1);
+	black_listed_poll_readers_list = init_singly_ll();
 }
+
+
+/* A list of black listers
+   Note: A black lister is not a kernel thread, but identified by struct file *filep
+*/
+
 
 int mac_open (struct inode *inode, struct file *filp){
 
 	struct kernthread *kernthread = NULL;
 	kernthread = kzalloc(sizeof(struct kernthread), GFP_KERNEL);
-	printk(KERN_INFO "%s() is called , inode = 0x%x, filep = 0x%x\n", 
-		__FUNCTION__, (unsigned int)inode,  (unsigned int) filp);
+	printk(KERN_INFO "%s() : %s\" (pid %i),  inode = 0x%x, filep = 0x%x\n",
+	            __FUNCTION__, get_current()->comm, get_current()->pid, (unsigned int)inode,  (unsigned int) filp);
 	print_file_flags(filp);
-
         init_completion(&kernthread->completion);
         sema_init(&kernthread->sem, 1);
         init_rwsem(&kernthread->rw_sem);
@@ -62,30 +69,58 @@ int mac_release (struct inode *inode, struct file *filp){
 
 
 ssize_t mac_read (struct file *filp, char __user *buf, size_t count, loff_t *f_pos){
+	
+	unsigned int isDeleted = 0, rc = 0;
+        down_read(&mac->rw_sem);
+        printk(KERN_INFO "%s() : poll reader %s\" (pid %i) enters \n", __FUNCTION__, get_current()->comm, get_current()->pid);
+        printk(KERN_INFO "%s() poll reader %s\" (pid %i) is reading mac, no of polling readers to read the update = %u\n", __FUNCTION__, get_current()->comm, get_current()->pid, MAC_GET_POLL_READER_COUNT(mac));
 
-	ssize_t n_count = 0;
-	down_read(&mac->rw_sem);
-	/* Whenever any change  in routing table is made by the writer in mac_write,  polling readers
-	   are sent entire mac table*/
-	printk(KERN_INFO "%s() poll reader %s\" (pid %i) is reading mac,  no of polling readers = %u\n", __FUNCTION__, get_current()->comm, get_current()->pid, MAC_GET_POLL_READER_COUNT(mac));
-	n_count = copy_mac_table_to_user_space(mac, buf, count);
-	/* serialize the readers in  Exit of CS ,and last readers should remove the changelist*/
-	SEM_LOCK(&mac_serialize_readers_cs_sem);
+        /* CS entery begins */
+        SEM_LOCK(&mac_serialize_readers_cs_sem);
+                if(is_singly_ll_empty(black_listed_poll_readers_list)){
+                         printk(KERN_INFO "%s() poll reader %s\" (pid %i) is the first reader\n",__FUNCTION__, get_current()->comm, get_current()->pid);
+                         mac_update_vector_count = mac_get_updated_mac_entries(mac, &mac_update_vector); // this msg is freed by last reader exiting CS
+                         printk(KERN_INFO "no of entries to be delivered to each reader = %u, mac_update_vector = 0x%x\n",
+                                mac_update_vector_count, (unsigned int)mac_update_vector);
+                        if(mac_update_vector_count > MAC_MAX_ENTRIES_FETCH)
+                                        mac_update_vector_count = MAC_MAX_ENTRIES_FETCH;
+                        rc = mac_update_vector_count;
+                }
+        SEM_UNLOCK(&mac_serialize_readers_cs_sem);
+        /* CS entery ends */
 
-#if 1
-	if(MAC_GET_POLL_READER_COUNT(mac) == 1){
-		printk(KERN_INFO "%s() last poll reader %s\" (pid %i) has also read the mac update\n", __FUNCTION__, get_current()->comm, get_current()->pid);
-		printk(KERN_INFO "%s() last poll reader %s\" (pid %i) has deleted the change list\n", __FUNCTION__, get_current()->comm, get_current()->pid);
-		mac_empty_change_list(mac);
-	}
+        /* CS begins*/
+        copy_to_user((void __user *)buf, mac_update_vector, sizeof(struct mac_entry) * mac_update_vector_count);
+        rc = mac_update_vector_count;
+        /* CS ends*/
 
-	printk(KERN_INFO "%s() poll reader %s\" (pid %i) has read the data, removed from poll readers list\n", __FUNCTION__, get_current()->comm, get_current()->pid);
-	MAC_REMOVE_POLL_READER(mac, &filp);
-	printk(KERN_INFO "%s() No of pending poll readers yet to read data = %u\n", __FUNCTION__, MAC_GET_POLL_READER_COUNT(mac));
-#endif
-	SEM_UNLOCK(&mac_serialize_readers_cs_sem);
-	up_read(&mac->rw_sem);
-	return n_count;
+        SEM_LOCK(&mac_serialize_readers_cs_sem);
+
+        if(MAC_GET_POLL_READER_COUNT(mac) == 1){
+                printk(KERN_INFO "%s() last poll reader \"%s\" (pid %i) has also read the mac update\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+                printk(KERN_INFO "%s() last poll reader \"%s\" (pid %i) has deleted the change list\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+                mac_empty_change_list(mac);
+                rc = mac_update_vector_count;
+                mac_update_vector_count = 0;
+                kfree(mac_update_vector);
+        }
+
+        if(NULL == singly_ll_is_value_present(mac->poll_readers_list, &filp, sizeof(struct filep **))){
+                printk(KERN_INFO "%s() Error : poll reader \"%s\" (pid %i) , filep = 0x%x, is not present in mac->poll_readers_list\n", __FUNCTION__, get_current()->comm, get_current()->pid, (unsigned int)filp);
+                print_singly_LL(mac->poll_readers_list);
+        }
+        else{
+                printk(KERN_INFO "%s() deleting \"%s\" (pid %i) : from mac->poll_readers_list\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+                isDeleted = singly_ll_delete_node_by_value(mac->poll_readers_list, (void *)&filp, sizeof(struct filep **));
+        }
+
+	printk(KERN_INFO "%s() poll reader \"%s\" (pid %i) has read the data, removed from orig poll readers list, isDeleted = %u\n", __FUNCTION__, get_current()->comm, get_current()->pid, isDeleted);
+        singly_ll_add_node_by_val(black_listed_poll_readers_list, (void *)&filp, sizeof(struct filep **));
+        printk(KERN_INFO "%s() poll reader \"%s\" (pid %i) has read the data, adding to black lister's list\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+
+        SEM_UNLOCK(&mac_serialize_readers_cs_sem);
+        up_read(&mac->rw_sem);
+        return rc;
 }
 
 
@@ -106,9 +141,9 @@ ssize_t mac_write (struct file *filp, const char __user *buf, size_t count, loff
 	copy_from_user(&kmsg, (void __user *)buf, sizeof(struct mac_update_t));
 
      /* down_write/up_write is same as MAC_LOCK_SEM(mac)/MAC_UNLOCK_SEM(mac) in write case*/
-        down_write(&mac->rw_sem); //MAC_LOCK_SEM(rt);
+        down_write(&mac->rw_sem); //MAC_LOCK_SEM(mac);
         apply_mac_updates(mac, &kmsg);
-        up_write(&mac->rw_sem); //MAC_UNLOCK_SEM(rt);
+        up_write(&mac->rw_sem); //MAC_UNLOCK_SEM(mac);
 	printk(KERN_INFO "%s() \"%s\" sending wake_up call to mac->readerQ\n", __FUNCTION__, get_current()->comm);
         wake_up(&mac->readerQ); // wake up the polling reader processes, poll fn is called again
 
@@ -367,6 +402,9 @@ long ioctl_mac_handler1 (struct file *filep, unsigned int cmd, unsigned long arg
 				update_count = GET_MAC_CHANGELIST_ENTRY_COUNT(mac);
 				put_user(update_count, &(mac_info->no_of_pending_updates));
 
+				counter = GET_NODE_COUNT_SINGLY_LL(black_listed_poll_readers_list);
+				put_user(counter, &(mac_info->no_of_blacklisted_polling_readers));
+
 				up_read(&mac->rw_sem);
 #if 0
 				copy_to_user((void __user *)&(mac_info->actual_node_count), &actual_count, 
@@ -456,52 +494,72 @@ unsigned int mac_poll (struct file *filep, struct poll_table_struct *poll_table)
 #define WAIT_FOR_DATA_WRITE             0
 
 	unsigned int isDataAvailable = 0; // 0 not, >0 means yes
-	printk(KERN_INFO "%s() is called , filep = 0x%x, poll_table = 0x%x\n", __FUNCTION__, (unsigned int)filep,
-										(unsigned int)poll_table);
+
 	/* if data is not available then choose one out of  two actions. refer rules on page 166, LDD3
 	   1. if O_NONBLOCK flag is set, then return immediately with return value -EAGAIN
 	   2. if O_NONBLOCK flag is not set, then block untill atleast one byte of data is available
 	   return 0;
 	 */
 
-	
 	/* lock the mac table, hence, in case if writers writing into mac, mac should be locked by sem*/
+	/* Add unique file pointers to the mac->poll_readers_list to keep trackof unique poll readers
+	   if file desc is already present, then no op
+	 */
 
-	add_mac_table_unique_poll_reader(mac, filep);
-
-	isDataAvailable = mutex_is_mac_updated(mac);
-
-	switch(isDataAvailable){
-		/* Data not Available*/
-		case 0:
-			{
-				if(IS_FILE_ACCESS_FLAG_SET(filep, O_NONBLOCK)){
-					return -EAGAIN;
-				}
-
-				/* block and wait for data arrival*/
-				poll_wait(filep, &mac->readerQ, poll_table);
-				printk(KERN_INFO "%s() : poll_wait is called\n", __FUNCTION__);
-				/* The above call is not a blocking call, it simply adds the 'current' process into wait queue*/
-
-			        /* kernel do not return to user space here, means, user space stays blocked in select*/
-				printk(KERN_INFO "%s() Data not available, \"%s\" (pid %i) is blocking\n",
-                                                        __FUNCTION__, get_current()->comm, get_current()->pid);
-
-                                //wait_event_interruptible(mac->readerQ, GET_MAC_CHANGELIST_ENTRY_COUNT(mac));
-                                //printk(KERN_INFO "%s() Data became available, returning to user space\n", __FUNCTION__);
-				return WAIT_FOR_DATA_AVAILABILITY;
+	SEM_LOCK(&mac_serialize_readers_cs_sem);
+	if (NULL == singly_ll_is_value_present(black_listed_poll_readers_list, &filep, sizeof(struct file **))){
+		printk(KERN_INFO "%s() poll reader %s\" (pid %i) is not black listed\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+		isDataAvailable = mutex_is_mac_updated(mac); // This operation need not be mutex protected, redundant now
+		if(isDataAvailable){
+			printk(KERN_INFO "%s() poll reader %s\" (pid %i) finds data is Available, returning POLLIN|POLLRDNORM\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+			SEM_UNLOCK(&mac_serialize_readers_cs_sem);
+			return POLLIN|POLLRDNORM;
+		}
+		else{
+			/* case 1 : if i am not black listed and data not available*/
+			printk(KERN_INFO "%s() poll reader %s\" (pid %i) finds data is not Available, means i am fresh entry into system\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+			if(IS_FILE_ACCESS_FLAG_SET(filep, O_NONBLOCK)){
+				SEM_UNLOCK(&mac_serialize_readers_cs_sem);
+				return -EAGAIN; // select return 2 in user space corresponding to this
 			}
-			break;
-		default:
-			/* Data Available
-			Now doesnt matter what is flag settings, return to user space immediately
-                        telling user program that data is available to be read
-			*/
-			{
-				return POLLIN|POLLRDNORM;
-			}
+			add_mac_table_unique_poll_reader(mac, filep);
+			printk(KERN_INFO "%s() poll reader %s\" (pid %i) added to mac orig polling list\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+			poll_wait(filep, &mac->readerQ, poll_table);
+			printk(KERN_INFO "%s() poll reader %s\" (pid %i) is blocked for Data availablity\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+			SEM_UNLOCK(&mac_serialize_readers_cs_sem);
+			return WAIT_FOR_DATA_AVAILABILITY;
+		}
 	}
 
-	return 0;
+	else{ /* if i am black listed*/
+		printk(KERN_INFO "%s() poll reader %s\" (pid %i) is black listed\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+		isDataAvailable = mutex_is_mac_updated(mac);
+		if(isDataAvailable){
+			/* Black list and data is available */
+			printk(KERN_INFO "%s() poll reader %s\" (pid %i) finds data is Available\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+			poll_wait(filep, &mac->readerQ, poll_table);
+			printk(KERN_INFO "%s() poll reader %s\" (pid %i) has already  read this update, blocking itself\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+			SEM_UNLOCK(&mac_serialize_readers_cs_sem);
+			return WAIT_FOR_DATA_AVAILABILITY;
+		}
+		else{ /* Blacklisted but data is not available*/
+			printk(KERN_INFO "%s() poll reader %s\" (pid %i) finds data is not Available\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+			printk(KERN_INFO "%s() poll reader %s\" (pid %i) is probably the last reader\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+			if(MAC_GET_POLL_READER_COUNT(mac) == 0){
+				printk(KERN_INFO "%s() mac->poll_readers_list is empty, copying the blacklist list into mac->poll_readers_list\n", __FUNCTION__);
+				mac->poll_readers_list->head = black_listed_poll_readers_list->head;
+				mac->poll_readers_list->node_count = black_listed_poll_readers_list->node_count;
+				black_listed_poll_readers_list->head = NULL;
+				black_listed_poll_readers_list->node_count = 0;
+			}
+			else{
+				printk(KERN_INFO "%s() Error : mac->poll_readers_list is not empty !! Count = %d\n", __FUNCTION__, MAC_GET_POLL_READER_COUNT(mac));
+			}
+			printk(KERN_INFO "%s() black_listed_poll_readers_list count = %d, mac->poll_readers_list_count = %d seen by %s\" (pid %i), and is blocking itself\n",
+					__FUNCTION__, black_listed_poll_readers_list->node_count, mac->poll_readers_list->node_count, get_current()->comm, get_current()->pid);
+			poll_wait(filep, &mac->readerQ, poll_table);
+			SEM_UNLOCK(&mac_serialize_readers_cs_sem);
+			return WAIT_FOR_DATA_AVAILABILITY;
+		}
+	}
 }

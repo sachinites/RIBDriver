@@ -30,19 +30,23 @@ print_mac_one_entry(unsigned int i, struct mac_entry *entry){
 
 void
 print_rt_fetched_entries(char *buf, unsigned int size, unsigned int units){
-	struct rt_entry *entry = (struct rt_entry *)buf;
+	struct rt_update_t *update_msg = NULL;
 	unsigned int j = 0;
+
+	update_msg = (struct rt_update_t *)buf;
 	for( ; j < units; j++)
-		print_rt_one_entry(j+1 , entry + j);		
+		print_rt_one_entry(j+1 , &update_msg->entry);		
 	printf("    |------|----------------------|----------------------|--------------|\n");
 }
 
 void
 print_mac_fetched_entries(char *buf, unsigned int size, unsigned int units){
-	struct mac_entry *entry = (struct mac_entry *)buf;
+	struct mac_update_t *update_msg = NULL;
 	unsigned int j = 0;
+	
+	update_msg = (struct rt_update_t *)buf;
 	for( ; j < units; j++)
-		print_mac_one_entry(j+1 , entry + j);		
+		print_mac_one_entry(j+1 , &update_msg->entry);		
 	printf("    |------|----------------------|----------------------|--------------|\n");
 }
 
@@ -201,6 +205,7 @@ static void rt_read_all(){
 	}
 	printf("Total Routes = %d\n", n);
 	print_rt_fetched_entries(buf, sizeof(buf), n);
+	memset(buf, 0, RT_MAX_ENTRIES_FETCH*sizeof(struct rt_update_t));
 }
 
 
@@ -216,6 +221,7 @@ static void mac_read_all(){
 	}
 	printf("Total Routes = %d\n", n);
 	print_mac_fetched_entries(buf, sizeof(buf), n);
+	memset(buf, 0, MAC_MAX_ENTRIES_FETCH*sizeof(struct rt_update_t));
 }
 
 void
@@ -230,6 +236,7 @@ ioctl_get_rt_info(){
 	printf("        Actual node count = %u\n", rt_info.actual_node_count);
 	printf("        # of pending updates = %u\n", rt_info.no_of_pending_updates);
 	printf("        # no_of_polling_readers = %u\n", rt_info.no_of_polling_readers);
+	printf("        # no_of_blacklisted_polling_readers = %u\n", rt_info.no_of_blacklisted_polling_readers);
 	printf("---------------------------------\n");
 }
 
@@ -484,21 +491,21 @@ main_menu(){
 		printf("Main Menu\n");
 		printf("1. open RT\n");
 		printf("2. purge RT\n");
-		printf("3. Subscribe RT (SYNC)\n");
-		printf("4. read All from RT\n");
+		printf("3. Subscribe RT (SYNC with op7/8/9)\n");
+		//printf("4. read All from RT\n");
 		printf("5. close RT\n");
 		printf("6. fork a new process\n");
-		printf("7. IOCTL add route (SYNC)\n");
-		printf("8. IOCTL delete route (SYNC)\n");
-		printf("9. IOCTL update route (SYNC)\n");
+		printf("7. IOCTL add route (SYNC with 3)\n");
+		printf("8. IOCTL delete route (SYNC with 3)\n");
+		printf("9. IOCTL update route (SYNC with 3)\n");
 		printf("10. IOCTL rt info\n");
-		printf("15. write() rt\n");
+		printf("15. write() rt (SYNC with 14)\n");
 		printf("------MAC TB operations-----\n");
-		printf("11. IOCTL add mac route\n");
+		printf("11. IOCTL add mac route (SYNC with 3)\n");
 		printf("12. open MAC\n");
-		printf("13. read all from MAC\n");
-		printf("14. poll the RT and MAC\n");
-		printf("16. write() mac\n");
+		//printf("13. read all from MAC\n");
+		printf("14. poll the RT and MAC (SYNC with 14/16)\n");
+		printf("16. write() mac (SYNC with 14)\n");
 		printf("17. exit\n");
 		printf("Enter choice (1-9)\n");
 		scanf("%d", &choice);

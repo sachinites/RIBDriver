@@ -28,18 +28,24 @@ static unsigned int n_readers_to_be_service = 0;
 static struct semaphore rt_serialize_readers_cs_sem;
 static struct rt_update_t *rt_update_vector = NULL;
 static int rt_update_vector_count = 0;
+static struct ll_t *black_listed_poll_readers_list = NULL; // poll readers who attempt to read the same  update again
+
 
 void rt_driver_init(void){
 	sema_init(&rt_serialize_readers_cs_sem, 1);
+	black_listed_poll_readers_list = init_singly_ll();
 }
 
+/* A list of black listers 
+Note: A black lister is not a kernel thread, but identified by struct file *filep
+*/
 
 int rt_open (struct inode *inode, struct file *filp){
 
 	struct kernthread *kernthread = NULL;
 	kernthread = kzalloc(sizeof(struct kernthread), GFP_KERNEL);
-	printk(KERN_INFO "%s() is called , inode = 0x%x, filep = 0x%x\n", 
-		__FUNCTION__, (unsigned int)inode,  (unsigned int) filp);
+	printk(KERN_INFO "%s() : %s\" (pid %i),  inode = 0x%x, filep = 0x%x\n", 
+		__FUNCTION__, get_current()->comm, get_current()->pid, (unsigned int)inode,  (unsigned int) filp);
 	print_file_flags(filp);
 
         init_completion(&kernthread->completion);
@@ -63,29 +69,56 @@ int rt_release (struct inode *inode, struct file *filp){
 
 ssize_t rt_read (struct file *filp, char __user *buf, size_t count, loff_t *f_pos){
 	
-	ssize_t n_count = 0;
+	unsigned int isDeleted = 0, rc = 0;
 	down_read(&rt->rw_sem);
-	/* Whenever any change  in routing table is made by the writer in rt_write,  polling readers 
-	are sent entire routing table*/
-	printk(KERN_INFO "%s() poll reader %s\" (pid %i) is reading rt, no of polling readers = %u\n", __FUNCTION__, get_current()->comm, get_current()->pid, RT_GET_POLL_READER_COUNT(rt));  
-	n_count = copy_rt_table_to_user_space(rt, buf, count);
-	/* serialize the readers in  Exit of CS ,and last readers should remove the changelist*/
+	printk(KERN_INFO "%s() : poll reader %s\" (pid %i) enters \n", __FUNCTION__, get_current()->comm, get_current()->pid);
+	printk(KERN_INFO "%s() poll reader %s\" (pid %i) is reading rt, no of polling readers to read the update = %u\n", __FUNCTION__, get_current()->comm, get_current()->pid, RT_GET_POLL_READER_COUNT(rt)); 
+
+	/* CS entery begins */
+	SEM_LOCK(&rt_serialize_readers_cs_sem);
+		if(is_singly_ll_empty(black_listed_poll_readers_list)){
+			 printk(KERN_INFO "%s() poll reader %s\" (pid %i) is the first reader\n",__FUNCTION__, get_current()->comm, get_current()->pid);
+			 rt_update_vector_count = rt_get_updated_rt_entries(rt, &rt_update_vector); // this msg is freed by last reader exiting CS
+                         printk(KERN_INFO "no of entries to be delivered to each reader = %u, rt_update_vector = 0x%x\n", 
+				rt_update_vector_count, (unsigned int)rt_update_vector);
+			if(rt_update_vector_count > RT_MAX_ENTRIES_FETCH)
+					rt_update_vector_count = RT_MAX_ENTRIES_FETCH;
+			rc = rt_update_vector_count;
+		}
+	SEM_UNLOCK(&rt_serialize_readers_cs_sem);
+	/* CS entery ends */
+
+	/* CS begins*/
+	copy_to_user((void __user *)buf, rt_update_vector, sizeof(struct rt_entry) * rt_update_vector_count);
+	rc = rt_update_vector_count;
+ 	/* CS ends*/
+
 	SEM_LOCK(&rt_serialize_readers_cs_sem);
 
-#if 1
 	if(RT_GET_POLL_READER_COUNT(rt) == 1){
-		printk(KERN_INFO "%s() last poll reader %s\" (pid %i) has also read the rt update\n", __FUNCTION__, get_current()->comm, get_current()->pid);
-		printk(KERN_INFO "%s() last poll reader %s\" (pid %i) has deleted the change list\n", __FUNCTION__, get_current()->comm, get_current()->pid);	
+		printk(KERN_INFO "%s() last poll reader \"%s\" (pid %i) has also read the rt update\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+		printk(KERN_INFO "%s() last poll reader \"%s\" (pid %i) has deleted the change list\n", __FUNCTION__, get_current()->comm, get_current()->pid);	
 		rt_empty_change_list(rt);
+		rc = rt_update_vector_count;
+		rt_update_vector_count = 0;
+		kfree(rt_update_vector);
 	}	
 
-	printk(KERN_INFO "%s() poll reader %s\" (pid %i) has read the data, removed from poll readers list\n", __FUNCTION__, get_current()->comm, get_current()->pid);
-	RT_REMOVE_POLL_READER(rt, &filp);
-	printk(KERN_INFO "%s() No of pending poll readers yet to read data = %u\n", __FUNCTION__, RT_GET_POLL_READER_COUNT(rt));
-#endif
+	if(NULL == singly_ll_is_value_present(rt->poll_readers_list, &filp, sizeof(struct filep **))){
+		printk(KERN_INFO "%s() Error : poll reader \"%s\" (pid %i) , filep = 0x%x, is not present in rt->poll_readers_list\n", __FUNCTION__, get_current()->comm, get_current()->pid, (unsigned int)filp);
+		print_singly_LL(rt->poll_readers_list);
+	}
+	else{
+		printk(KERN_INFO "%s() deleting \"%s\" (pid %i) : from rt->poll_readers_list\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+		isDeleted = singly_ll_delete_node_by_value(rt->poll_readers_list, (void *)&filp, sizeof(struct filep **));
+	}
+	printk(KERN_INFO "%s() poll reader \"%s\" (pid %i) has read the data, removed from orig poll readers list, isDeleted = %u\n", __FUNCTION__, get_current()->comm, get_current()->pid, isDeleted);
+	singly_ll_add_node_by_val(black_listed_poll_readers_list, (void *)&filp, sizeof(struct filep **));
+	printk(KERN_INFO "%s() poll reader \"%s\" (pid %i) has read the data, adding to black lister's list\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+	
 	SEM_UNLOCK(&rt_serialize_readers_cs_sem);
 	up_read(&rt->rw_sem);
-	return n_count;
+	return rc;
 }
 
 
@@ -370,6 +403,9 @@ long ioctl_rt_handler1 (struct file *filep, unsigned int cmd, unsigned long arg)
 
 				counter = RT_GET_POLL_READER_COUNT(rt);
 				put_user(counter, &(rt_info->no_of_polling_readers));
+				
+				counter = GET_NODE_COUNT_SINGLY_LL(black_listed_poll_readers_list);
+				put_user(counter, &(rt_info->no_of_blacklisted_polling_readers));
 
 				up_read(&rt->rw_sem);
 #if 0
@@ -460,8 +496,7 @@ unsigned int rt_poll (struct file *filep, struct poll_table_struct *poll_table){
 #define WAIT_FOR_DATA_WRITE		0
 
 	unsigned int isDataAvailable = 0; // 0 not, >0 means yes
-	printk(KERN_INFO "%s() is called , filep = 0x%x, poll_table = 0x%x\n", __FUNCTION__, (unsigned int)filep,
-										(unsigned int)poll_table);
+	
 	/* if data is not available then choose one out of  two actions. refer rules on page 166, LDD3
 	   1. if O_NONBLOCK flag is set, then return immediately with return value -EAGAIN
 	   2. if O_NONBLOCK flag is not set, then block untill atleast one byte of data is available
@@ -472,38 +507,61 @@ unsigned int rt_poll (struct file *filep, struct poll_table_struct *poll_table){
 	/* Add unique file pointers to the rt->poll_readers_list to keep trackof unique poll readers
 	  if file desc is already present, then no op
 	*/
-	add_rt_table_unique_poll_reader(rt, filep);
 
-	isDataAvailable = mutex_is_rt_updated(rt);
-
-	switch(isDataAvailable){
-		/* Data not Available*/
-		case 0: 
-			{
-				if(IS_FILE_ACCESS_FLAG_SET(filep, O_NONBLOCK)){
-					return -EAGAIN; // select return 2 in user space corresponding to this
-				}
-
-				/* O_NONBLOCK is not set now, block and wait for data arrival*/
-				poll_wait(filep, &rt->readerQ, poll_table);
-				printk(KERN_INFO "%s() poll_wait is called\n", __FUNCTION__); 
-				/* The above call is not a blocking call, it simply adds the 'current' process into wait queue*/	
-				/* kernel do not return to user space here, means, user space stays blocked in select*/	
-				printk(KERN_INFO "%s() Data not available, \"%s\" (pid %i) is blocking\n", 
-							__FUNCTION__, get_current()->comm, get_current()->pid);
-				/* These readers will be revoked by rt_write*/
-				return WAIT_FOR_DATA_AVAILABILITY; // returning 0 will block this thread by kernel untill wake up is called on wait queue
+	 SEM_LOCK(&rt_serialize_readers_cs_sem);
+	 if (NULL == singly_ll_is_value_present(black_listed_poll_readers_list, &filep, sizeof(struct file **))){
+		printk(KERN_INFO "%s() poll reader %s\" (pid %i) is not black listed\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+		isDataAvailable = mutex_is_rt_updated(rt); // This operation need not be mutex protected, redundant now
+		if(isDataAvailable){
+			 printk(KERN_INFO "%s() poll reader %s\" (pid %i) finds data is Available, returning POLLIN|POLLRDNORM\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+	 		 SEM_UNLOCK(&rt_serialize_readers_cs_sem);
+			 return POLLIN|POLLRDNORM;
+		}
+		else{
+			/* case 1 : if i am not black listed and data not available*/
+			printk(KERN_INFO "%s() poll reader %s\" (pid %i) finds data is not Available, means i am fresh entry into system\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+			if(IS_FILE_ACCESS_FLAG_SET(filep, O_NONBLOCK)){
+				SEM_UNLOCK(&rt_serialize_readers_cs_sem);
+				return -EAGAIN; // select return 2 in user space corresponding to this
 			}
-			break;
-		default:
-			/* Data Available
-			 Now doesnt matter what is flag settings, return to user space immediately
-			telling user program that data is available to be read
-			*/
-			{
-				return POLLIN|POLLRDNORM;	
-			}
-			break;
+			add_rt_table_unique_poll_reader(rt, filep);
+			printk(KERN_INFO "%s() poll reader %s\" (pid %i) added to rt orig polling list\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+			poll_wait(filep, &rt->readerQ, poll_table);
+			printk(KERN_INFO "%s() poll reader %s\" (pid %i) is blocked for Data availablity\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+			SEM_UNLOCK(&rt_serialize_readers_cs_sem);
+			return WAIT_FOR_DATA_AVAILABILITY;
+		}
 	}
-	return 0;	
+
+	else{ /* if i am black listed*/
+		printk(KERN_INFO "%s() poll reader %s\" (pid %i) is black listed\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+		isDataAvailable = mutex_is_rt_updated(rt);
+		if(isDataAvailable){
+			/* Black list and data is available */
+			printk(KERN_INFO "%s() poll reader %s\" (pid %i) finds data is Available\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+			poll_wait(filep, &rt->readerQ, poll_table);
+			printk(KERN_INFO "%s() poll reader %s\" (pid %i) has already  read this update, blocking itself\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+			SEM_UNLOCK(&rt_serialize_readers_cs_sem);
+			return WAIT_FOR_DATA_AVAILABILITY;
+		}
+		else{ /* Blacklisted but data is not available*/
+			printk(KERN_INFO "%s() poll reader %s\" (pid %i) finds data is not Available\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+			printk(KERN_INFO "%s() poll reader %s\" (pid %i) is probably the last reader\n", __FUNCTION__, get_current()->comm, get_current()->pid);
+			if(RT_GET_POLL_READER_COUNT(rt) == 0){	
+				printk(KERN_INFO "%s() rt->poll_readers_list is empty, copying the blacklist list into rt->poll_readers_list\n", __FUNCTION__);
+				rt->poll_readers_list->head = black_listed_poll_readers_list->head;
+				rt->poll_readers_list->node_count = black_listed_poll_readers_list->node_count;
+				black_listed_poll_readers_list->head = NULL;
+				black_listed_poll_readers_list->node_count = 0; 
+			}
+			else{
+				printk(KERN_INFO "%s() Error : rt->poll_readers_list is not empty !! Count = %d\n", __FUNCTION__, RT_GET_POLL_READER_COUNT(rt)); 
+			}
+			printk(KERN_INFO "%s() black_listed_poll_readers_list count = %d, rt->poll_readers_list_count = %d seen by %s\" (pid %i), and is blocking itself\n", 
+						__FUNCTION__, black_listed_poll_readers_list->node_count, rt->poll_readers_list->node_count, get_current()->comm, get_current()->pid);
+			poll_wait(filep, &rt->readerQ, poll_table);
+			SEM_UNLOCK(&rt_serialize_readers_cs_sem);
+			return WAIT_FOR_DATA_AVAILABILITY;
+		}
+	}	
 }
