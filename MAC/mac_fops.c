@@ -547,6 +547,11 @@ unsigned int mac_poll (struct file *filep, struct poll_table_struct *poll_table)
 			printk(KERN_INFO "%s() poll reader %s\" (pid %i) is probably the last reader\n", __FUNCTION__, get_current()->comm, get_current()->pid);
 			if(MAC_GET_POLL_READER_COUNT(mac) == 0){
 				printk(KERN_INFO "%s() mac->poll_readers_list is empty, copying the blacklist list into mac->poll_readers_list\n", __FUNCTION__);
+
+				 /* Do not copy this way, if some new reader comes while old readers have still not yet finished reading the  update,
+                                   we may end up in losing the new reader. Copy nodes from black_listed_poll_readers_list to rt->poll_readers_list instead
+                                   TBD */
+
 				mac->poll_readers_list->head = black_listed_poll_readers_list->head;
 				mac->poll_readers_list->node_count = black_listed_poll_readers_list->node_count;
 				black_listed_poll_readers_list->head = NULL;

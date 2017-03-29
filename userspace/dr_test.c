@@ -56,8 +56,8 @@ poll_rt_mac_table(){
 	/*assume that FD are open*/
 	fd_set readset;
 
-	char rt_buf[RT_MAX_ENTRIES_FETCH * sizeof(struct rt_entry)];
-	char mac_buf[MAC_MAX_ENTRIES_FETCH * sizeof(struct mac_entry)];
+	char rt_buf[RT_MAX_ENTRIES_FETCH * sizeof(struct rt_update_t)];
+	char mac_buf[MAC_MAX_ENTRIES_FETCH * sizeof(struct mac_update_t)];
 
 	while(1){
 		FD_ZERO(&readset);
@@ -194,7 +194,7 @@ rt_close(){
 }
 
 static void rt_read_all(){	
-	char buf[RT_MAX_ENTRIES_FETCH * sizeof(struct rt_entry)];
+	char buf[RT_MAX_ENTRIES_FETCH * sizeof(struct rt_update_t)];
 	memset(buf, 0, sizeof(buf));
 	int n = read(rt_fd, buf, sizeof(buf));
 	if(n < 0)
@@ -210,7 +210,7 @@ static void rt_read_all(){
 
 
 static void mac_read_all(){	
-	char buf[MAC_MAX_ENTRIES_FETCH * sizeof(struct mac_entry)];
+	char buf[MAC_MAX_ENTRIES_FETCH * sizeof(struct mac_update_t)];
 	memset(buf, 0, sizeof(buf));
 	int n = read(mac_fd, buf, sizeof(buf));
 	if(n < 0)
@@ -221,7 +221,7 @@ static void mac_read_all(){
 	}
 	printf("Total Routes = %d\n", n);
 	print_mac_fetched_entries(buf, sizeof(buf), n);
-	memset(buf, 0, MAC_MAX_ENTRIES_FETCH*sizeof(struct rt_update_t));
+	memset(buf, 0, MAC_MAX_ENTRIES_FETCH*sizeof(struct mac_update_t));
 }
 
 void

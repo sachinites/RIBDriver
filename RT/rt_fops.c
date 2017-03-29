@@ -549,6 +549,10 @@ unsigned int rt_poll (struct file *filep, struct poll_table_struct *poll_table){
 			printk(KERN_INFO "%s() poll reader %s\" (pid %i) is probably the last reader\n", __FUNCTION__, get_current()->comm, get_current()->pid);
 			if(RT_GET_POLL_READER_COUNT(rt) == 0){	
 				printk(KERN_INFO "%s() rt->poll_readers_list is empty, copying the blacklist list into rt->poll_readers_list\n", __FUNCTION__);
+
+				/* Do not copy this way, if some new reader comes while old readers have still not yet finished reading the  update,
+				   we may end up in losing the new reader. Copy nodes from black_listed_poll_readers_list to rt->poll_readers_list instead
+				   TBD */
 				rt->poll_readers_list->head = black_listed_poll_readers_list->head;
 				rt->poll_readers_list->node_count = black_listed_poll_readers_list->node_count;
 				black_listed_poll_readers_list->head = NULL;
