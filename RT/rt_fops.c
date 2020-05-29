@@ -44,8 +44,8 @@ int rt_open (struct inode *inode, struct file *filp){
 
 	struct kernthread *kernthread = NULL;
 	kernthread = kzalloc(sizeof(struct kernthread), GFP_KERNEL);
-	printk(KERN_INFO "%s() : %s\" (pid %i),  inode = 0x%x, filep = 0x%x\n", 
-		__FUNCTION__, get_current()->comm, get_current()->pid, (unsigned int)inode,  (unsigned int) filp);
+	printk(KERN_INFO "%s() : %s\" (pid %i),  inode = %p, filep = %p\n", 
+		__FUNCTION__, get_current()->comm, get_current()->pid, inode,   filp);
 	print_file_flags(filp);
 
         init_completion(&kernthread->completion);
@@ -61,7 +61,7 @@ int rt_open (struct inode *inode, struct file *filp){
 
 int rt_release (struct inode *inode, struct file *filp){
 	
-	printk(KERN_INFO "%s() is called , inode = 0x%x, filep = 0x%x\n", __FUNCTION__, (unsigned int)inode,  (unsigned int) filp);
+	printk(KERN_INFO "%s() is called , inode = %p, filep = %p\n", __FUNCTION__, inode,   filp);
 	
 	return 0;
 }
@@ -79,8 +79,8 @@ ssize_t rt_read (struct file *filp, char __user *buf, size_t count, loff_t *f_po
 		if(is_singly_ll_empty(black_listed_poll_readers_list)){
 			 printk(KERN_INFO "%s() poll reader %s\" (pid %i) is the first reader\n",__FUNCTION__, get_current()->comm, get_current()->pid);
 			 rt_update_vector_count = rt_get_updated_rt_entries(rt, &rt_update_vector); // this msg is freed by last reader exiting CS
-                         printk(KERN_INFO "no of entries to be delivered to each reader = %u, rt_update_vector = 0x%x\n", 
-				rt_update_vector_count, (unsigned int)rt_update_vector);
+                         printk(KERN_INFO "no of entries to be delivered to each reader = %u, rt_update_vector = %p\n", 
+				rt_update_vector_count, rt_update_vector);
 			if(rt_update_vector_count > RT_MAX_ENTRIES_FETCH)
 					rt_update_vector_count = RT_MAX_ENTRIES_FETCH;
 			rc = rt_update_vector_count;
@@ -105,7 +105,7 @@ ssize_t rt_read (struct file *filp, char __user *buf, size_t count, loff_t *f_po
 	}	
 
 	if(NULL == singly_ll_is_value_present(rt->poll_readers_list, &filp, sizeof(struct filep **))){
-		printk(KERN_INFO "%s() Error : poll reader \"%s\" (pid %i) , filep = 0x%x, is not present in rt->poll_readers_list\n", __FUNCTION__, get_current()->comm, get_current()->pid, (unsigned int)filp);
+		printk(KERN_INFO "%s() Error : poll reader \"%s\" (pid %i) , filep = %p, is not present in rt->poll_readers_list\n", __FUNCTION__, get_current()->comm, get_current()->pid, filp);
 		print_singly_LL(rt->poll_readers_list);
 	}
 	else{
@@ -125,13 +125,13 @@ ssize_t rt_read (struct file *filp, char __user *buf, size_t count, loff_t *f_po
 ssize_t rt_write (struct file *filp, const char __user *buf, size_t count, loff_t *f_pos){
 
 	struct rt_update_t kmsg;
-	printk(KERN_INFO "%s() is called , filep = 0x%x, user buff = 0x%x, buff_size = %d\n",
-			__FUNCTION__, (unsigned int) filp, (unsigned int) buf, count);
+	printk(KERN_INFO "%s() is called , filep = %p, user buff = %p, buff_size = %ld\n",
+			__FUNCTION__,  filp,  buf, count);
 
 
 	memset(&kmsg, 0, sizeof(struct rt_update_t));
 
-	if(access_ok(VERIFY_READ, (void __user*)buf, count) ==  0){
+	if(access_ok((void __user*)buf, count) ==  0){
 		printk(KERN_INFO "%s() : invalid user space ptr\n", __FUNCTION__);
 		return 0;
 	}
@@ -182,20 +182,20 @@ int rt_worker_fn(void *arg){
 	wait_event_interruptible(rt->writerQ, !(is_queue_empty(rt->writer_Q)));
 	printk(KERN_INFO "worker thread is revived from sleep, picking up the first writer thread from writerQ\n");
 	
-	printk(KERN_INFO "worker thread is locking the writer Queue= 0x%x\n", (unsigned int)rt->writer_Q);
+	printk(KERN_INFO "worker thread is locking the writer Queue= %p\n", rt->writer_Q);
 	RT_SEM_LOCK_WRITER_Q(rt);
 	
 	writer_thread = (struct kernthread *)deque(rt->writer_Q);
-	printk(KERN_INFO "worker thread has extracted the writer \"%s\" (pid %i) from writer Queue = 0x%x\n", 
-			writer_thread->task->comm, writer_thread->task->pid, (unsigned int)rt->writer_Q);
+	printk(KERN_INFO "worker thread has extracted the writer \"%s\" (pid %i) from writer Queue = %p\n", 
+			writer_thread->task->comm, writer_thread->task->pid, rt->writer_Q);
 
 	RT_SEM_UNLOCK_WRITER_Q(rt);
-	printk(KERN_INFO "worker thread has released locked over writer Queue= 0x%x\n", (unsigned int)rt->writer_Q);
+	printk(KERN_INFO "worker thread has released locked over writer Queue= %p\n", rt->writer_Q);
 	
 	if(!writer_thread){
 		printk(KERN_INFO "worker thread finds there is no writer in writer_Q, worker thread is sleeping\n");
 		RT_SEM_UNLOCK_WRITER_Q(rt);
-		printk(KERN_INFO "worker thread has unlocked the writer Queue= 0x%x\n", (unsigned int)rt->writer_Q);
+		printk(KERN_INFO "worker thread has unlocked the writer Queue= %p\n", rt->writer_Q);
 		goto WAIT_FOR_WRITER_ARRIVAL;
 	}
 
@@ -226,8 +226,8 @@ int rt_worker_fn(void *arg){
 								n_readers_to_be_service);
 
 	rt_update_vector_count = rt_get_updated_rt_entries(rt, &rt_update_vector);// this msg is freed by last reader exiting CS
-	printk(KERN_INFO "worker thread finds the no of entries to be delivered to each reader = %u, rt_update_vector = 0x%x\n", 
-				rt_update_vector_count, (unsigned int)rt_update_vector);
+	printk(KERN_INFO "worker thread finds the no of entries to be delivered to each reader = %u, rt_update_vector = %p\n", 
+				rt_update_vector_count, rt_update_vector);
 	
 	allow_rt_access_to_readers(rt, n_readers_to_be_service);
 	
@@ -260,7 +260,7 @@ long ioctl_rt_handler1 (struct file *filep, unsigned int cmd, unsigned long arg)
 		case (RT_IOC_COMMON_UPDATE_RT):
 			{
 				writer_thread = kern_thread;
-				if(access_ok(VERIFY_READ, (void __user*)arg, sizeof(struct rt_update_t)) ==  0){
+				if(access_ok((void __user*)arg, sizeof(struct rt_update_t)) ==  0){
 					printk(KERN_INFO "%s() : invalid user space ptr\n", __FUNCTION__);
 					return rc;
 				}
@@ -269,8 +269,8 @@ long ioctl_rt_handler1 (struct file *filep, unsigned int cmd, unsigned long arg)
 				printk(KERN_INFO "writer process \"%s\" (pid %i) enters the system\n", 
 						writer_thread->task->comm, writer_thread->task->pid);
 
-				printk(KERN_INFO "writer thread \"%s\" (pid %i) is locking the writer Queue = 0x%x, writer Queue count = %u\n", 
-						writer_thread->task->comm, writer_thread->task->pid, (unsigned int)rt->writer_Q, Q_COUNT(rt->writer_Q));
+				printk(KERN_INFO "writer thread \"%s\" (pid %i) is locking the writer Queue = %p, writer Queue count = %u\n", 
+						writer_thread->task->comm, writer_thread->task->pid, rt->writer_Q, Q_COUNT(rt->writer_Q));
 
 				RT_SEM_LOCK_WRITER_Q(rt);
 				enqueue(rt->writer_Q, writer_thread);
@@ -302,8 +302,8 @@ long ioctl_rt_handler1 (struct file *filep, unsigned int cmd, unsigned long arg)
 				printk(KERN_INFO "writer process \"%s\" (pid %i) enters the system\n", 
 						writer_thread->task->comm, writer_thread->task->pid);
 
-				printk(KERN_INFO "writer thread \"%s\" (pid %i) is locking the writer Queue = 0x%x, writer Queue count = %u\n", 
-						writer_thread->task->comm, writer_thread->task->pid, (unsigned int)rt->writer_Q, Q_COUNT(rt->writer_Q));
+				printk(KERN_INFO "writer thread \"%s\" (pid %i) is locking the writer Queue = %p, writer Queue count = %u\n", 
+						writer_thread->task->comm, writer_thread->task->pid, rt->writer_Q, Q_COUNT(rt->writer_Q));
 
 				RT_SEM_LOCK_WRITER_Q(rt);
 				enqueue(rt->writer_Q, writer_thread);
@@ -334,8 +334,8 @@ long ioctl_rt_handler1 (struct file *filep, unsigned int cmd, unsigned long arg)
 				printk(KERN_INFO "writer process \"%s\" (pid %i) enters the system\n", 
 						writer_thread->task->comm, writer_thread->task->pid);
 
-				printk(KERN_INFO "writer thread \"%s\" (pid %i) is locking the writer Queue = 0x%x, writer Queue count = %u\n", 
-						writer_thread->task->comm, writer_thread->task->pid, (unsigned int)rt->writer_Q, Q_COUNT(rt->writer_Q));
+				printk(KERN_INFO "writer thread \"%s\" (pid %i) is locking the writer Queue = %p, writer Queue count = %u\n", 
+						writer_thread->task->comm, writer_thread->task->pid, rt->writer_Q, Q_COUNT(rt->writer_Q));
 
 				RT_SEM_LOCK_WRITER_Q(rt);
 				enqueue(rt->writer_Q, writer_thread);
@@ -381,7 +381,7 @@ long ioctl_rt_handler1 (struct file *filep, unsigned int cmd, unsigned long arg)
 				unsigned int actual_count = 0, counter = 0, update_count = 0;
 				struct singly_ll_node_t *head = GET_FIRST_RT_ENTRY_NODE(rt);
 
-				if(access_ok(VERIFY_WRITE, (void __user*)arg, sizeof(struct rt_info_t)) ==  0){
+				if(access_ok((void __user*)arg, sizeof(struct rt_info_t)) ==  0){
 					printk(KERN_INFO "%s() : invalid user space ptr\n", __FUNCTION__);
 					return rc;
 				}
@@ -421,7 +421,7 @@ long ioctl_rt_handler1 (struct file *filep, unsigned int cmd, unsigned long arg)
 				printk(KERN_INFO "reader process \"%s\" (pid %i) enters the system\n",	
 						reader_thread->task->comm, reader_thread->task->pid);
 			
-				if(access_ok(VERIFY_WRITE, (void __user*)arg, sizeof(struct rt_update_t) * RT_MAX_ENTRIES_FETCH) ==  0){
+				if(access_ok((void __user*)arg, sizeof(struct rt_update_t) * RT_MAX_ENTRIES_FETCH) ==  0){
 					printk(KERN_INFO "%s() : invalid user space ptr\n", __FUNCTION__);
 					return rc;
 				}
@@ -432,8 +432,8 @@ long ioctl_rt_handler1 (struct file *filep, unsigned int cmd, unsigned long arg)
 				if(rt_update_vector_count > RT_MAX_ENTRIES_FETCH)
 					rt_update_vector_count = RT_MAX_ENTRIES_FETCH;
 
-				printk(KERN_INFO "reader thread \"%s\" (pid %i) is locking the reader Queue = 0x%x, reader Queue count = %u\n",
-                                                reader_thread->task->comm, reader_thread->task->pid, (unsigned int)rt->reader_Q, Q_COUNT(rt->reader_Q));
+				printk(KERN_INFO "reader thread \"%s\" (pid %i) is locking the reader Queue = %p, reader Queue count = %u\n",
+                                                reader_thread->task->comm, reader_thread->task->pid, rt->reader_Q, Q_COUNT(rt->reader_Q));
 
 				RT_SEM_LOCK_READER_Q(rt);
                                 enqueue(rt->reader_Q, reader_thread);
@@ -486,7 +486,7 @@ long ioctl_rt_handler1 (struct file *filep, unsigned int cmd, unsigned long arg)
 
 
 long ioctl_rt_handler2 (struct file *filep, unsigned int cmd, unsigned long arg){
-	printk(KERN_INFO "%s() is called , filep = 0x%x, cmd code = %d\n", __FUNCTION__, (unsigned int) filep, cmd);
+	printk(KERN_INFO "%s() is called , filep = %p, cmd code = %d\n", __FUNCTION__,  filep, cmd);
 	return 0;
 }
 

@@ -46,8 +46,8 @@ int mac_open (struct inode *inode, struct file *filp){
 
 	struct kernthread *kernthread = NULL;
 	kernthread = kzalloc(sizeof(struct kernthread), GFP_KERNEL);
-	printk(KERN_INFO "%s() : %s\" (pid %i),  inode = 0x%x, filep = 0x%x\n",
-	            __FUNCTION__, get_current()->comm, get_current()->pid, (unsigned int)inode,  (unsigned int) filp);
+	printk(KERN_INFO "%s() : %s\" (pid %i),  inode = %p, filep = %p\n",
+	            __FUNCTION__, get_current()->comm, get_current()->pid, inode,   filp);
 	print_file_flags(filp);
         init_completion(&kernthread->completion);
         sema_init(&kernthread->sem, 1);
@@ -62,7 +62,7 @@ int mac_open (struct inode *inode, struct file *filp){
 
 int mac_release (struct inode *inode, struct file *filp){
 	
-	printk(KERN_INFO "%s() is called , inode = 0x%x, filep = 0x%x\n", __FUNCTION__, (unsigned int)inode,  (unsigned int) filp);
+	printk(KERN_INFO "%s() is called , inode = %p, filep = %p\n", __FUNCTION__, inode,   filp);
 	
 	return 0;
 }
@@ -80,8 +80,8 @@ ssize_t mac_read (struct file *filp, char __user *buf, size_t count, loff_t *f_p
                 if(is_singly_ll_empty(black_listed_poll_readers_list)){
                          printk(KERN_INFO "%s() poll reader %s\" (pid %i) is the first reader\n",__FUNCTION__, get_current()->comm, get_current()->pid);
                          mac_update_vector_count = mac_get_updated_mac_entries(mac, &mac_update_vector); // this msg is freed by last reader exiting CS
-                         printk(KERN_INFO "no of entries to be delivered to each reader = %u, mac_update_vector = 0x%x\n",
-                                mac_update_vector_count, (unsigned int)mac_update_vector);
+                         printk(KERN_INFO "no of entries to be delivered to each reader = %u, mac_update_vector = %p\n",
+                                mac_update_vector_count, mac_update_vector);
                         if(mac_update_vector_count > MAC_MAX_ENTRIES_FETCH)
                                         mac_update_vector_count = MAC_MAX_ENTRIES_FETCH;
                         rc = mac_update_vector_count;
@@ -106,7 +106,7 @@ ssize_t mac_read (struct file *filp, char __user *buf, size_t count, loff_t *f_p
         }
 
         if(NULL == singly_ll_is_value_present(mac->poll_readers_list, &filp, sizeof(struct filep **))){
-                printk(KERN_INFO "%s() Error : poll reader \"%s\" (pid %i) , filep = 0x%x, is not present in mac->poll_readers_list\n", __FUNCTION__, get_current()->comm, get_current()->pid, (unsigned int)filp);
+                printk(KERN_INFO "%s() Error : poll reader \"%s\" (pid %i) , filep = %p, is not present in mac->poll_readers_list\n", __FUNCTION__, get_current()->comm, get_current()->pid, filp);
                 print_singly_LL(mac->poll_readers_list);
         }
         else{
@@ -127,13 +127,13 @@ ssize_t mac_read (struct file *filp, char __user *buf, size_t count, loff_t *f_p
 ssize_t mac_write (struct file *filp, const char __user *buf, size_t count, loff_t *f_pos){
 
 	struct mac_update_t kmsg;
-	printk(KERN_INFO "%s() is called , filep = 0x%x, user buff = 0x%x, buff_size = %d\n",
-			__FUNCTION__, (unsigned int) filp, (unsigned int) buf, count);
+	printk(KERN_INFO "%s() is called , filep = %p, user buff = %p, buff_size = %ld\n",
+			__FUNCTION__,  filp,  buf, count);
 
 
 	memset(&kmsg, 0, sizeof(struct mac_update_t));
 
-	if(access_ok(VERIFY_READ, (void __user*)buf, count) ==  0){
+	if(access_ok((void __user*)buf, count) ==  0){
 		printk(KERN_INFO "%s() : invalid user space ptr\n", __FUNCTION__);
 		return 0;
 	}
@@ -184,20 +184,20 @@ int mac_worker_fn(void *arg){
 	wait_event_interruptible(mac->writerQ, !(is_queue_empty(mac->writer_Q)));
 	printk(KERN_INFO "worker thread is revived from sleep, picking up the first writer thread from writerQ\n");
 	
-	printk(KERN_INFO "worker thread is locking the writer Queue= 0x%x\n", (unsigned int)mac->writer_Q);
+	printk(KERN_INFO "worker thread is locking the writer Queue= %p\n", mac->writer_Q);
 	MAC_SEM_LOCK_WRITER_Q(mac);
 	
 	writer_thread = (struct kernthread *)deque(mac->writer_Q);
-	printk(KERN_INFO "worker thread has extracted the writer \"%s\" (pid %i) from writer Queue = 0x%x\n", 
-			writer_thread->task->comm, writer_thread->task->pid, (unsigned int)mac->writer_Q);
+	printk(KERN_INFO "worker thread has extracted the writer \"%s\" (pid %i) from writer Queue = %p\n", 
+			writer_thread->task->comm, writer_thread->task->pid, mac->writer_Q);
 
 	MAC_SEM_UNLOCK_WRITER_Q(mac);
-	printk(KERN_INFO "worker thread has released locked over writer Queue= 0x%x\n", (unsigned int)mac->writer_Q);
+	printk(KERN_INFO "worker thread has released locked over writer Queue= %p\n", mac->writer_Q);
 	
 	if(!writer_thread){
 		printk(KERN_INFO "worker thread finds there is no writer in writer_Q, worker thread is sleeping\n");
 		MAC_SEM_UNLOCK_WRITER_Q(mac);
-		printk(KERN_INFO "worker thread has unlocked the writer Queue= 0x%x\n", (unsigned int)mac->writer_Q);
+		printk(KERN_INFO "worker thread has unlocked the writer Queue= %p\n", mac->writer_Q);
 		goto WAIT_FOR_WRITER_ARRIVAL;
 	}
 
@@ -227,8 +227,8 @@ int mac_worker_fn(void *arg){
 								n_readers_to_be_service);
 
 	mac_update_vector_count = mac_get_updated_mac_entries(mac, &mac_update_vector);// this msg is freed by last reader exiting CS
-	printk(KERN_INFO "worker thread finds the no of entries to be delivered to each reader = %u, mac_update_vector = 0x%x\n", 
-				mac_update_vector_count, (unsigned int)mac_update_vector);
+	printk(KERN_INFO "worker thread finds the no of entries to be delivered to each reader = %u, mac_update_vector = %p\n", 
+				mac_update_vector_count, mac_update_vector);
 	
 	allow_mac_access_to_readers(mac, n_readers_to_be_service);
 	
@@ -261,7 +261,7 @@ long ioctl_mac_handler1 (struct file *filep, unsigned int cmd, unsigned long arg
 		case (MAC_IOC_COMMON_UPDATE_MAC):
 			{
 				writer_thread = kern_thread;
-				if(access_ok(VERIFY_READ, (void __user*)arg, sizeof(struct mac_update_t)) ==  0){
+				if(access_ok((void __user*)arg, sizeof(struct mac_update_t)) ==  0){
 					printk(KERN_INFO "%s() : invalid user space ptr\n", __FUNCTION__);
 					return rc;
 				}
@@ -270,8 +270,8 @@ long ioctl_mac_handler1 (struct file *filep, unsigned int cmd, unsigned long arg
 				printk(KERN_INFO "writer process \"%s\" (pid %i) enters the system\n", 
 						writer_thread->task->comm, writer_thread->task->pid);
 
-				printk(KERN_INFO "writer thread \"%s\" (pid %i) is locking the writer Queue = 0x%x, writer Queue count = %u\n", 
-						writer_thread->task->comm, writer_thread->task->pid, (unsigned int)mac->writer_Q, Q_COUNT(mac->writer_Q));
+				printk(KERN_INFO "writer thread \"%s\" (pid %i) is locking the writer Queue = %p, writer Queue count = %u\n", 
+						writer_thread->task->comm, writer_thread->task->pid, mac->writer_Q, Q_COUNT(mac->writer_Q));
 
 				MAC_SEM_LOCK_WRITER_Q(mac);
 				enqueue(mac->writer_Q, writer_thread);
@@ -303,8 +303,8 @@ long ioctl_mac_handler1 (struct file *filep, unsigned int cmd, unsigned long arg
 				printk(KERN_INFO "writer process \"%s\" (pid %i) enters the system\n", 
 						writer_thread->task->comm, writer_thread->task->pid);
 
-				printk(KERN_INFO "writer thread \"%s\" (pid %i) is locking the writer Queue = 0x%x, writer Queue count = %u\n", 
-						writer_thread->task->comm, writer_thread->task->pid, (unsigned int)mac->writer_Q, Q_COUNT(mac->writer_Q));
+				printk(KERN_INFO "writer thread \"%s\" (pid %i) is locking the writer Queue = %p, writer Queue count = %u\n", 
+						writer_thread->task->comm, writer_thread->task->pid, mac->writer_Q, Q_COUNT(mac->writer_Q));
 
 				MAC_SEM_LOCK_WRITER_Q(mac);
 				enqueue(mac->writer_Q, writer_thread);
@@ -335,8 +335,8 @@ long ioctl_mac_handler1 (struct file *filep, unsigned int cmd, unsigned long arg
 				printk(KERN_INFO "writer process \"%s\" (pid %i) enters the system\n", 
 						writer_thread->task->comm, writer_thread->task->pid);
 
-				printk(KERN_INFO "writer thread \"%s\" (pid %i) is locking the writer Queue = 0x%x, writer Queue count = %u\n", 
-						writer_thread->task->comm, writer_thread->task->pid, (unsigned int)mac->writer_Q, Q_COUNT(mac->writer_Q));
+				printk(KERN_INFO "writer thread \"%s\" (pid %i) is locking the writer Queue = %p, writer Queue count = %u\n", 
+						writer_thread->task->comm, writer_thread->task->pid, mac->writer_Q, Q_COUNT(mac->writer_Q));
 
 				MAC_SEM_LOCK_WRITER_Q(mac);
 				enqueue(mac->writer_Q, writer_thread);
@@ -382,7 +382,7 @@ long ioctl_mac_handler1 (struct file *filep, unsigned int cmd, unsigned long arg
 				unsigned int actual_count = 0, counter = 0, update_count = 0;
 				struct singly_ll_node_t *head = GET_FIRST_MAC_ENTRY_NODE(mac);
 
-				if(access_ok(VERIFY_WRITE, (void __user*)arg, sizeof(struct mac_info_t)) ==  0){
+				if(access_ok((void __user*)arg, sizeof(struct mac_info_t)) ==  0){
 					printk(KERN_INFO "%s() : invalid user space ptr\n", __FUNCTION__);
 					return rc;
 				}
@@ -419,7 +419,7 @@ long ioctl_mac_handler1 (struct file *filep, unsigned int cmd, unsigned long arg
 				printk(KERN_INFO "reader process \"%s\" (pid %i) enters the system\n",	
 						reader_thread->task->comm, reader_thread->task->pid);
 			
-				if(access_ok(VERIFY_WRITE, (void __user*)arg, sizeof(struct mac_update_t) * MAC_MAX_ENTRIES_FETCH) ==  0){
+				if(access_ok((void __user*)arg, sizeof(struct mac_update_t) * MAC_MAX_ENTRIES_FETCH) ==  0){
 					printk(KERN_INFO "%s() : invalid user space ptr\n", __FUNCTION__);
 					return rc;
 				}
@@ -430,8 +430,8 @@ long ioctl_mac_handler1 (struct file *filep, unsigned int cmd, unsigned long arg
 				if(mac_update_vector_count > MAC_MAX_ENTRIES_FETCH)
 					mac_update_vector_count = MAC_MAX_ENTRIES_FETCH;
 
-				printk(KERN_INFO "reader thread \"%s\" (pid %i) is locking the reader Queue = 0x%x, reader Queue count = %u\n",
-                                                reader_thread->task->comm, reader_thread->task->pid, (unsigned int)mac->reader_Q, Q_COUNT(mac->reader_Q));
+				printk(KERN_INFO "reader thread \"%s\" (pid %i) is locking the reader Queue = %p, reader Queue count = %u\n",
+                                                reader_thread->task->comm, reader_thread->task->pid, mac->reader_Q, Q_COUNT(mac->reader_Q));
 
 				MAC_SEM_LOCK_READER_Q(mac);
                                 enqueue(mac->reader_Q, reader_thread);
@@ -484,7 +484,7 @@ long ioctl_mac_handler1 (struct file *filep, unsigned int cmd, unsigned long arg
 
 
 long ioctl_mac_handler2 (struct file *filep, unsigned int cmd, unsigned long arg){
-	printk(KERN_INFO "%s() is called , filep = 0x%x, cmd code = %d\n", __FUNCTION__, (unsigned int) filep, cmd);
+	printk(KERN_INFO "%s() is called , filep = %p, cmd code = %d\n", __FUNCTION__,  filep, cmd);
 	return 0;
 }
 

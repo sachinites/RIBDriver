@@ -117,8 +117,8 @@ dump_thread_DS(_pthread_t *thread)
     printf("pthread_handle = %ld\n", thread->pthread_handle);
     printf("isWaiting = %d\n", thread->isWaiting);
     printf("resume_thread_id = %d\n", thread->resume_thread_id);
-    printf("attr = 0x%x\n", (unsigned int )&(thread->attr));
-    printf("cond = 0x%x\n", (unsigned int )&(thread->cond));
+    printf("attr = %p\n", (unsigned int )&(thread->attr));
+    printf("cond = %p\n", (unsigned int )&(thread->cond));
     printf("===================================\n");
     return;
 }

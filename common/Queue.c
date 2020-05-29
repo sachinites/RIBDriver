@@ -90,7 +90,7 @@ print_Queue(struct Queue_t *q){
 	for(i = 0; i < Q_DEFAULT_SIZE; i++){
 		if(q->elem[i] == NULL)
 			continue;
-		printk(KERN_INFO "index = %u, elem = 0x%x\n", i, (unsigned int)q->elem[i]);
+		printk(KERN_INFO "index = %u, elem = %p\n", i, q->elem[i]);
 	}
 }
 

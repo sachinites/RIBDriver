@@ -49,11 +49,11 @@ add_mac_table_unique_poll_reader(struct mac_table *mac, struct file *filep){
         node = singly_ll_is_value_present(mac->poll_readers_list, &filep, sizeof(struct file **));
 
         if(node == NULL){
-                printk(KERN_INFO "%s() filep =0x%x added to unique_poll_reader list\n" , __FUNCTION__, (unsigned int)filep);
+                printk(KERN_INFO "%s() filep =%p added to unique_poll_reader list\n" , __FUNCTION__, filep);
                 singly_ll_add_node_by_val(mac->poll_readers_list, &filep, sizeof(struct file **));
                 return;
         }
-        printk(KERN_INFO "%s() filep =0x%x already present, ignored \n", __FUNCTION__, (unsigned int)filep);
+        printk(KERN_INFO "%s() filep =%p already present, ignored \n", __FUNCTION__, filep);
 }
 
 
@@ -147,7 +147,7 @@ copy_mac_table_to_user_space(struct mac_table *mac,
 	}
 
 	/*validate the user space pointer*/
-	if(access_ok(VERIFY_WRITE, (void __user*)buf, buf_size) ==  0){
+	if(access_ok((void __user*)buf, buf_size) ==  0){
 		 printk(KERN_INFO "%s() : invalid user space ptr\n", __FUNCTION__);
 //		 up_read(&mac->rw_sem);
 		 return 0;
