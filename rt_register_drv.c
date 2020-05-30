@@ -55,7 +55,8 @@ char_driver_init_module(void){
 	return rc;
 
 	MAJOR_NUMBER_REG_FAILED:
-		printk(KERN_INFO "%s(): can't get major number %d from kernel\n", __FUNCTION__, MAJOR(dev));
+		printk(KERN_INFO "%s(): can't get major number %d from kernel, rc = %d\n", 
+        __FUNCTION__, MAJOR(dev), rc);
 		return rc;
 
 	NO_MEM:

@@ -44,7 +44,7 @@ print_mac_fetched_entries(char *buf, unsigned int size, unsigned int units){
 	struct mac_update_t *update_msg = NULL;
 	unsigned int j = 0;
 	
-	update_msg = (struct rt_update_t *)buf;
+	update_msg = (struct mac_update_t *)buf;
 	for( ; j < units; j++)
 		print_mac_one_entry(j+1 , &update_msg->entry);		
 	printf("    |------|----------------------|----------------------|--------------|\n");
@@ -91,7 +91,6 @@ poll_rt_mac_table(){
 static void
 mac_open(){
 
-	int i = 0;
 	/* Here user is opening a file. User should specify the appropriate
 	permissions/accessibility using flags. defined in uapi/asm-generic/fcntl.h
 	flags supported are :
@@ -141,7 +140,6 @@ mac_open(){
 static void
 rt_open(){
 
-	int i = 0;
 	/* Here user is opening a file. User should specify the appropriate
 	permissions/accessibility using flags. defined in uapi/asm-generic/fcntl.h
 	flags supported are :
@@ -462,7 +460,7 @@ rt_subscrption_fn(void * arg){
 		printf("No. of updates recieved = %d\n", n);
 		// print updates here
 		for(i = 0; i < n; i++){
-			update_msg = buf;
+			update_msg = (struct rt_update_t *)buf;
 			printf("%d. op_code = %d\n", i+1, update_msg->op_code);
 			print_rt_one_entry(i+1, &update_msg->entry);			
 		}
@@ -507,7 +505,7 @@ main_menu(){
 		printf("14. poll the RT and MAC (SYNC with 14/16)\n");
 		printf("16. write() mac (SYNC with 14)\n");
 		printf("17. exit\n");
-		printf("Enter choice (1-9)\n");
+		printf("Enter choice (1-17)\n");
 		scanf("%d", &choice);
 		switch (choice){
 			case 1:

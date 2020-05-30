@@ -83,9 +83,10 @@ get_empty_slot_from_pool_mutex(blocked_pool_t *block_pool){
     int i;
     pthread_mutex_lock(&(block_pool->pool_mutex));
     for(i = block_pool->pool_size -1; i >=0; i--){
-        if(block_pool->blocked_thread_collection[i] == NULL)
+        if(block_pool->blocked_thread_collection[i] == NULL){
             pthread_mutex_unlock(&(block_pool->pool_mutex));
             return i;
+        }
     }
     pthread_mutex_unlock(&(block_pool->pool_mutex));
     return FAILURE;
@@ -117,8 +118,8 @@ dump_thread_DS(_pthread_t *thread)
     printf("pthread_handle = %ld\n", thread->pthread_handle);
     printf("isWaiting = %d\n", thread->isWaiting);
     printf("resume_thread_id = %d\n", thread->resume_thread_id);
-    printf("attr = %p\n", (unsigned int )&(thread->attr));
-    printf("cond = %p\n", (unsigned int )&(thread->cond));
+    printf("attr = %p\n", &(thread->attr));
+    printf("cond = %p\n", &(thread->cond));
     printf("===================================\n");
     return;
 }
